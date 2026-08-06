@@ -795,6 +795,32 @@ Ba thứ phát sinh khi dựng, đều không đoán trước được từ thi�
 
 **Còn lại:** C4 (ablation) cần LLM, đang `not_run`. C5 chưa lấy mẫu — cần người đọc, ưu tiên nhóm Luật (`/QH`), nơi câu hỏi đặt vào một *luật sửa đổi* thay vì luật gốc có thể khiên cưỡng dù đồ thị và văn bản đều xác nhận.
 
+### 10.5 — G7 đã dựng xong (2026-08-06)
+
+Nhóm lớn nhất (90 câu) và là nhóm **đầu tiên thật sự đo vector retrieval** — G1 chỉ đo đường đi tới metadata.
+
+```
+90 item -> out/g7.jsonl      C1 pass         90/90      69 văn bản riêng biệt
+situation 54/90 = 60%        C2 pass         54/54      distractor 3,74/item
+(mục tiêu ≥50%)              lộ số hiệu       0/54      paraphrase 54 lời gọi, 0 lỗi
+```
+
+Đây là nhóm đầu tiên dùng LLM — 54 lời gọi `deepseek-v4-flash` cho `paraphrase()`, opt-in bằng cờ `--paraphrase`. Cổng C2 chạy trên **mọi** bản viết lại.
+
+Bốn thứ chỉ lộ ra khi dựng:
+
+**a. Tiêu đề boilerplate làm câu `situation` vô nghĩa.** "Giải thích từ ngữ", "Phạm vi điều chỉnh", "Đối tượng áp dụng" có ở gần như mọi văn bản. Hỏi *"quy định hiện hành về giải thích từ ngữ như thế nào?"* mà không nêu số hiệu thì **mơ hồ giữa 66.368 văn bản** — không tồn tại đáp án đúng duy nhất, nên `context_recall` chấm kiểu gì cũng sai. Đã đưa vào danh sách loại trừ.
+
+**b. Tiêu đề dài là rò rỉ từ khoá.** Có tiêu đề Điều dài 250 ký tự; nhét nguyên vào câu hỏi thì vừa không giống người hỏi, vừa **trùng nguyên văn với chunk đích** ⇒ BM25 trúng ngay, đúng cái bẫy §5.2 cảnh báo. Giới hạn 12–80 ký tự.
+
+**c. Tiêu đề hỏng do parse làm lộ số hiệu.** Ví dụ thật: tiêu đề `", Điều 42 Nghị định số 86/2018/NĐ-CP đã được"`. Đưa vào câu `situation` thì lộ đúng thứ dạng này phải giấu. Lọc: tiêu đề phải bắt đầu bằng chữ cái, không chứa số hiệu, không chứa tham chiếu Điều/Khoản. Câu `lookup` gặp tiêu đề hỏng thì rơi về khuôn chỉ dùng số Điều.
+
+**d. Cổng C2 loại oan khuôn của chính mình.** Luật ban đầu đòi bản viết lại phải có dấu `?`, nhưng khuôn `"Tôi cần biết quy định về …"` vốn là câu trần thuật. Đã sửa: chỉ đòi dấu hỏi khi bản gốc có, và thay bằng phép đo **tỷ lệ độ dài** để bắt đúng rủi ro thật là LLM đi trả lời thay vì viết lại.
+
+**Tác dụng phụ đáng ghi:** LLM tự sửa lỗi OCR trong tiêu đề nguồn (`"bồ trí"→"bố trí"`, `"miền nhiệm"→"miễn nhiệm"`). Câu hỏi tự nhiên hơn nhưng **không còn khớp mặt chữ** với chunk đích vốn vẫn giữ lỗi. Với eval retrieval đây là điều tốt — buộc khớp ngữ nghĩa thay vì ăn may bằng trùng chuỗi — nhưng phải biết là nó xảy ra.
+
+> Ghi chú: `legal-rag` đã có sẵn `legal_rag/evaluation/` với `golden.json`, `criteria.py`, `grader.py`. Cần đối chiếu để không dựng trùng, và xem có tái dùng được tầng chấm không.
+
 ---
 
 ## Phụ lục A — Template câu hỏi

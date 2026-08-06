@@ -52,6 +52,52 @@ Ngưỡng nhận `>= 3` (`MIN_DIEM_BANG_CHUNG`). Span được nới **ngược 
 vì điều khoản thi hành viết dạng *"Các quy định sau đây hết hiệu lực…:"* rồi mới liệt
 kê — cắt riêng mục danh sách sẽ mất câu mang nghĩa.
 
+## G7 — nhóm nội dung (90 câu)
+
+```bash
+python -m generator.run_g7 --n 90 --pool 6000 --out out/g7.jsonl              # không LLM
+python -m generator.run_g7 --n 90 --pool 6000 --paraphrase all --out out/g7.jsonl
+```
+
+`--paraphrase` **opt-in** vì nó gọi API trả tiền bằng key trong `.env` của `legal-rag`.
+Không bật thì câu `situation` giữ bản template, cổng C2 ghi `chua_paraphrase`.
+
+Điều kiện chọn ca, mỗi cái có lý do:
+
+| Điều kiện | Vì sao |
+|---|---|
+| `hieu_luc_den IS NULL` | hỏi hiện tại, không lẫn G2′ |
+| `n_parts = 1` | trọn nội dung trong **một** chunk — nếu không, đáp án trải nhiều chunk và `context_recall` mất nghĩa |
+| loại tiêu đề thủ tục | "hiệu lực thi hành", "tổ chức thực hiện"… là boilerplate, và G1 đã dùng |
+| loại tiêu đề boilerplate | "giải thích từ ngữ", "phạm vi điều chỉnh"… có ở gần như mọi văn bản ⇒ câu `situation` không nêu số hiệu sẽ **mơ hồ giữa 66.368 văn bản**, không có đáp án đúng duy nhất |
+| tiêu đề 12–80 ký tự, không chứa số hiệu / tham chiếu Điều-Khoản | tiêu đề 250 ký tự nhét vào câu hỏi là **rò rỉ từ khoá** (trùng nguyên văn chunk đích ⇒ BM25 trúng ngay); tiêu đề hỏng do parse thì làm lộ cả số hiệu — đúng thứ dạng `situation` phải giấu |
+| nội dung 300–2500 ký tự | đủ để hỏi, đủ ngắn để chấm |
+
+Bẫy (`distractor_ids`): Điều khác **cùng văn bản** + cùng số Điều ở **văn bản khác cùng
+lĩnh vực**. Bẫy cross-norm tính riêng cho từng item đã chọn — nhét vào `SELECT` thì nó
+quét toàn đồ thị cho mỗi ứng viên và query treo.
+
+### Kết quả G7 (2026-08-06)
+
+```
+90 item -> out/g7.jsonl          C1 pass            90/90
+situation 54/90 = 60%            C2 pass         54/54 situation
+(mục tiêu ≥50%)                  lộ số hiệu           0/54
+69 văn bản riêng biệt            distractor  3,74 câu/item
+```
+
+Paraphrase: 54 lời gọi, `deepseek-v4-flash`, 0 lỗi API.
+
+Ví dụ trước → sau:
+
+> `Hiện nay bồ trí công tác sau miền nhiệm, cách chức Châp hành viên được quy định ra sao?`
+> → `Hiện nay việc bố trí công tác sau khi miễn nhiệm, cách chức Chấp hành viên được quy định như thế nào?`
+
+Chú ý: LLM **tự sửa lỗi OCR** trong tiêu đề nguồn ("bồ trí"→"bố trí", "miền nhiệm"→
+"miễn nhiệm"). Câu hỏi tự nhiên hơn, nhưng hệ quả là nó **không còn khớp mặt chữ** với
+chunk đích vốn vẫn giữ lỗi OCR. Với eval retrieval đây là điều tốt — buộc phải khớp
+ngữ nghĩa chứ không ăn may bằng trùng chuỗi — nhưng cần biết là nó có xảy ra.
+
 ## Kết quả G1 (2026-08-06)
 
 ```

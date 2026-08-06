@@ -118,6 +118,25 @@ def find_evidence_span(store, norm_id: str, needle: str) -> tuple[GoldSpan | Non
     return (tot[0], tot[1]) if tot else (None, 0)
 
 
+def chunk_span(store, expr_id: str, part: int = 0) -> tuple[GoldSpan | None, dict]:
+    """Lấy TRỌN chunk làm span — dùng cho G7, nơi đáp án chính là nội dung điều luật.
+
+    Trả (span, payload). Payload để bên gọi lọc thêm (n_parts, tiêu đề, độ dài).
+    """
+    pid = point_id(expr_id, part)
+    pts = store.client.retrieve(store.collection, ids=[pid], with_payload=True)
+    if not pts:
+        return None, {}
+    pl = pts[0].payload or {}
+    text = pl.get("text") or ""
+    if not text:
+        return None, pl
+    return GoldSpan(expr_id=expr_id, part=part, chunk_id=pid,
+                    start=0, end=len(text),
+                    chunk_text_sha256=content_hash(text),
+                    text=text), pl
+
+
 def gate_c1(store, span: GoldSpan) -> tuple[bool, str]:
     """C1 — chunk còn nguyên nội dung (hash khớp) VÀ span nằm đúng offset.
 
