@@ -11,15 +11,12 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
-import io
 import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
-from .common import open_neo4j, open_qdrant, verify_point_id
+from .common import open_neo4j, open_qdrant, verify_point_id, setup_stdout
 from . import g7_content, paraphrase
 
 GENERATOR_VERSION = "1.0"
@@ -56,6 +53,7 @@ def chay_paraphrase(items, gioi_han, log=print) -> dict:
 
 
 def main() -> int:
+    setup_stdout()
     ap = argparse.ArgumentParser()
     ap.add_argument("--n", type=int, default=90)
     ap.add_argument("--pool", type=int, default=4000)

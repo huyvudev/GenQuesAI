@@ -821,6 +821,32 @@ Bốn thứ chỉ lộ ra khi dựng:
 
 > Ghi chú: `legal-rag` đã có sẵn `legal_rag/evaluation/` với `golden.json`, `criteria.py`, `grader.py`. Cần đối chiếu để không dựng trùng, và xem có tái dùng được tầng chấm không.
 
+### 10.6 — G2′ đã dựng xong (2026-08-06)
+
+Nhóm khó nhất và trọng số cao nhất. Mô hình §4.4 đã kiểm trên dữ liệu trước khi code: **133.151/148.173 (90%)** Expression của văn bản bị thay có `hieu_luc_den` **đúng bằng** `ngay_hieu_luc` của văn bản thay thế. 10% lệch (đóng sớm/muộn hơn) bị loại ở `WHERE` — mốc chuyển giao không rõ thì không làm đáp án đúng được.
+
+```
+80 item -> out/g2.jsonl     C1 pass  80/80    lỗi logic thời gian   0
+situation 48/80 = 60%       C2 pass  48/48    lộ số hiệu         0/48
+mid 27 · near 27 · on 26    (mỗi loại ≥25%)   paraphrase 48 gọi, 0 lỗi
+```
+
+`on_boundary` **dùng lại `find_evidence_span()` của G1**: bằng chứng "văn bản cũ hết hiệu lực" nằm đúng ở điều khoản bãi bỏ trong văn bản mới. Bẫy luôn là **phía sai thời điểm** của cùng mốc chuyển giao — đúng chủ đề, sai thời gian, tức đúng thứ cần để phân biệt hệ có lọc thời gian hay không.
+
+Bốn thứ phát sinh:
+
+**a. `linh_vuc` rỗng ở toàn bộ 66.368 văn bản** (giá trị `[]`). Không dùng được để phân biệt chủ đề. **Kéo theo:** bẫy cross-norm của G7 (§10.5) khớp điều kiện `n2.linh_vuc = n.linh_vuc` với *mọi* văn bản — bẫy vẫn hợp lệ theo §5.3 ("cùng số Điều, văn bản khác") nhưng **không** thu hẹp theo lĩnh vực như tên gọi gợi ý. Đã sửa chú thích trong code cho đúng sự thật.
+
+**b. Tiêu đề văn bản chứa số hiệu.** Dạng thật: `"Thông tư số 12/2016/TT-BTTTT Quy định về việc chỉ định phòng thử nghiệm…"`. Dùng nguyên làm chủ đề cho câu `situation` là lộ đúng thứ phải giấu. `chu_de_tu_norm()` bóc số hiệu + tiền tố ("Quy định về", "Hướng dẫn"…) rồi mới dùng.
+
+**c. Chủ đề Điều một mình thì mơ hồ.** "Các hành vi bị nghiêm cấm" trùng hàng chục văn bản; hỏi kèm ngày vẫn không ra đáp án duy nhất. Nên câu `situation` ghép **chủ đề Điều + chủ đề văn bản**. Cũng đã áp danh sách loại trừ boilerplate của G7 vào G2′ — thiếu nó thì sinh ra câu vô nghĩa kiểu *"Ngày 01/07/2025, hiệu lực thi hành áp dụng theo văn bản nào?"*.
+
+**d. Hai lỗ hổng trong cổng C2, một giả một thật.**
+- *Báo động giả:* LLM viết `4/11/2020` thay `04/11/2020` — cùng một ngày, bị coi là thực thể mới. Đã chuẩn hoá ngày trước khi so.
+- *Lỗ hổng thật:* `core_so_hieu()` chỉ khớp chữ HOA, mà dữ liệu có `nđ-cp` viết thường ⇒ dùng nó để canh rò rỉ thì lọt. Thêm `co_so_hieu()` không phân biệt hoa thường, chỉ dùng để **phát hiện**; `core_so_hieu()` giữ nguyên vai trò **trích chuẩn**.
+
+Điểm (d) đáng nhớ: cùng một regex mà dùng cho hai mục đích khác nhau — trích và canh — thì mục đích canh luôn cần lỏng hơn.
+
 ---
 
 ## Phụ lục A — Template câu hỏi

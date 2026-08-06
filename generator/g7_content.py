@@ -96,6 +96,9 @@ TPL_SITUATION = [
 
 
 # Chạy RIÊNG cho từng item đã chọn (~90 lần) thay vì lồng trong SELECT (~6.000 lần).
+# LƯU Ý: `linh_vuc` là [] ở TOÀN BỘ 66.368 Norm (đo 2026-08-06) nên điều kiện dưới
+# luôn đúng — thực tế bẫy là "cùng số Điều, văn bản bất kỳ", vẫn hợp lệ theo §5.3
+# nhưng KHÔNG được thu hẹp theo lĩnh vực như tên gọi gợi ý.
 BAY_KHAC_VB = """
 MATCH (n2:Norm)-[:HAS_PART]->(k2:Component)-[:HAS_VERSION]->(e2:Expression)
 WHERE n2.linh_vuc = $linh_vuc AND n2.norm_id <> $norm_id

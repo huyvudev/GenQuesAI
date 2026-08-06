@@ -6,11 +6,27 @@ DETERMINISTIC. Không có lời gọi LLM nào ở tầng sinh sự thật.
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 import re
 import sys
 import uuid
 from pathlib import Path
+
+_stdout_da_boc = False
+
+
+def setup_stdout() -> None:
+    """Console Windows mặc định cp1252 -> chữ Việt vỡ. Bọc lại UTF-8.
+
+    Phải idempotent: nhiều module `run_*` import lẫn nhau, bọc hai lần thì lớp bị bỏ
+    sẽ đóng luôn buffer bên dưới -> 'I/O operation on closed file'.
+    """
+    global _stdout_da_boc
+    if _stdout_da_boc:
+        return
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    _stdout_da_boc = True
 
 # Code của hệ RAG nằm ở repo khác; nạp bằng đường dẫn thay vì cài đặt.
 LEGAL_RAG_ROOT = Path(os.environ.get("LEGAL_RAG_ROOT", r"D:\Project\Chatbot-Law\chatbot"))
@@ -58,6 +74,15 @@ def core_so_hieu(so_hieu: str | None) -> str | None:
         return None
     m = _SO_HIEU.search(so_hieu)
     return m.group(0) if m else None
+
+
+# Bản KHÔNG phân biệt hoa thường — dùng để PHÁT HIỆN rò rỉ, không để trích chuẩn.
+# Dữ liệu thật có cả 'nđ-cp' viết thường; dùng core_so_hieu() để canh rò rỉ thì lọt.
+_SO_HIEU_I = re.compile(r"\d+[a-zA-Z]?/\d{4}/[A-ZĐ][A-ZĐ0-9\-]*", re.IGNORECASE)
+
+
+def co_so_hieu(s: str | None) -> bool:
+    return bool(s and _SO_HIEU_I.search(s))
 
 
 # ── hash nội dung ───────────────────────────────────────────────────────────

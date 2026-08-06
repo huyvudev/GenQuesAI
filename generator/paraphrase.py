@@ -36,10 +36,20 @@ _ENT = [
 ]
 
 
+_NGAY = re.compile(r"\b(\d{1,2})[/-](\d{1,2})[/-](\d{4})\b")
+
+
+def _chuan_hoa(s: str) -> str:
+    """'04/11/2020' và '4/11/2020' là CÙNG một ngày — không chuẩn hoá thì C2 báo
+    động giả, loại oan bản viết lại chỉ vì LLM bỏ số 0 đứng đầu."""
+    return _NGAY.sub(lambda m: f"{int(m[1])}/{int(m[2])}/{m[3]}", s or "")
+
+
 def entities(s: str) -> set[str]:
+    s = _chuan_hoa(s)
     out: set[str] = set()
     for rx in _ENT:
-        out |= {m.group(0).lower() for m in rx.finditer(s or "")}
+        out |= {m.group(0).lower() for m in rx.finditer(s)}
     return out
 
 

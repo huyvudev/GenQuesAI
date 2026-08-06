@@ -98,6 +98,39 @@ Chú ý: LLM **tự sửa lỗi OCR** trong tiêu đề nguồn ("bồ trí"→"
 chunk đích vốn vẫn giữ lỗi OCR. Với eval retrieval đây là điều tốt — buộc phải khớp
 ngữ nghĩa chứ không ăn may bằng trùng chuỗi — nhưng cần biết là nó có xảy ra.
 
+## G2′ — câu hỏi "tại một thời điểm" (80 câu)
+
+```bash
+python -m generator.run_g2 --n 80 --pool 8000 --paraphrase all --out out/g2.jsonl
+```
+
+Định nghĩa gốc của G2 có **0 ứng viên** (§10.3b) nên nhóm này dựng trên khoảng hiệu
+lực đóng. Mô hình đã đo: `133.151/148.173 (90%)` Expression của văn bản bị thay có
+`hieu_luc_den` **đúng bằng** `ngay_hieu_luc` của văn bản thay thế. 10% lệch bị loại ở
+`WHERE` — mốc chuyển giao không rõ thì không dùng làm đáp án đúng được.
+
+```
+tu ─────────── giữa ────── den-7 ──┼── den ──────────>
+                │            │     │
+          mid_interval  near_boundary│  on_boundary
+          đáp án = cũ    đáp án = cũ │  đáp án = MỚI
+```
+
+Khoảng là **nửa mở** `[tu, den)`. Hai loại đầu bắt lỗi *"hệ luôn trả bản mới nhất bất
+kể hỏi năm nào"*; loại thứ ba bắt lỗi off-by-one ngay tại mốc. Bẫy luôn là **phía sai
+thời điểm** của cùng mốc chuyển giao — đúng chủ đề, sai thời gian.
+
+`on_boundary` dùng lại `find_evidence_span()` của G1: bằng chứng "văn bản cũ hết hiệu
+lực" nằm ở điều khoản bãi bỏ trong văn bản mới.
+
+### Kết quả G2′ (2026-08-06)
+
+```
+80 item -> out/g2.jsonl       C1 pass    80/80      lỗi logic thời gian   0
+situation 48/80 = 60%         C2 pass    48/48      lộ số hiệu         0/48
+mid 27 · near 27 · on 26      (mỗi loại ≥25%)       paraphrase 48 gọi, 0 lỗi
+```
+
 ## Kết quả G1 (2026-08-06)
 
 ```
