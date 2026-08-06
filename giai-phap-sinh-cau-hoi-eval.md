@@ -82,18 +82,20 @@ Nguồn 2 hay bị bỏ quên nhưng bắt buộc: không có nó thì biết đ
 
 *(số liệu minh hoạ)*
 
-**B1 · Cypher rút ra một ca.** Tìm Điều đã bị sửa ít nhất một lần:
+**B1 · Cypher rút ra một ca.** Tìm Expression có khoảng hiệu lực **đã đóng**, cùng văn bản thay thế nó:
 
 ```
-Điều 6, Nghị định 15/2018/NĐ-CP
-  ├─ Phiên bản A: hiệu lực 02/02/2018 → 30/06/2021   [chunk c_71902]
-  └─ Phiên bản B: hiệu lực 01/07/2021 → nay          [chunk c_88213]
+Điều 6 — Nghị định 15/2018/NĐ-CP   hiệu lực 02/02/2018 → 30/06/2021   [chunk c_71902]
+      │
+      │  (:Norm)-[:REPLACES]->(:Norm)
+      ↓
+Điều 8 — Nghị định 99/2021/NĐ-CP   hiệu lực 01/07/2021 → nay          [chunk c_88213]
 ```
 
-→ Ca có 2 phiên bản, dùng được cho nhóm **G2**.
+→ Ca có mốc chuyển giao rõ ràng, dùng được cho nhóm **G2′** (§4.4).
 
-**B2 · Chọn mốc thời gian.** Lấy `05/07/2021` — **sát ngay sau ngày sửa đổi 5 ngày** (`as_of_kind = near_boundary`, §4.1). Chỉ ca sát biên mới phân biệt được hệ có thật sự lọc theo thời gian hay chỉ trả về phiên bản mới nhất.
-→ Đáp án đúng = **phiên bản B**; phiên bản A trở thành **bẫy** (`distractor`).
+**B2 · Chọn mốc thời gian.** Lấy `05/07/2021` — **sát ngay sau mốc chuyển giao 5 ngày** (`as_of_kind = near_boundary`, §4.1). Chỉ ca sát biên mới phân biệt được hệ có thật sự lọc theo thời gian hay chỉ trả về văn bản mới nhất.
+→ Đáp án đúng = **Nghị định 99/2021**; Nghị định 15/2018 trở thành **bẫy** (`distractor`).
 
 **B3 · Lấy đáp án — không có LLM.** Cắt nguyên văn từ `c_88213`, ký tự 412–690:
 > *"Tổ chức, cá nhân sản xuất, kinh doanh thực phẩm phải đăng ký bản công bố…"*
@@ -152,14 +154,14 @@ Nhân lên 400 lần → xong bộ đề. **Đóng băng, commit.**
 
 | | Kết quả |
 |---|---|
-| Chunk lấy được | `c_71902` ← **phiên bản cũ** |
-| Câu trả lời | Nội dung quy định trước 01/07/2021 |
+| Chunk lấy được | `c_71902` ← **văn bản cũ đã hết hiệu lực** |
+| Câu trả lời | Nội dung Nghị định 15/2018, tức quy định trước 01/07/2021 |
 | `context_recall` | **0** — không lấy được chunk đúng |
 | `faithfulness` | **cao** — trả lời trung thực với chunk nó đã lấy |
 
 **B9 · Đọc kết quả.** Hai con số ngược nhau chính là chẩn đoán: **hệ không bịa, nó lấy nhầm** — và chunk nó trả về đúng bằng `distractor_ids` đã ghi sẵn. Tra bảng triage (Mục 8):
 
-> Distractor xếp trên gold + sai tập trung ở G2 → **thiếu bộ lọc thời gian trong retrieval** → đưa `as_of` vào điều kiện lọc.
+> Distractor xếp trên gold + sai tập trung ở G2′ → **thiếu bộ lọc thời gian trong retrieval** → đưa `as_of` vào điều kiện lọc.
 
 Đây mới là thứ có giá trị. Một con số tổng "độ chính xác 62%" không nói được phải sửa gì.
 
@@ -293,9 +295,9 @@ Hai điều kiện bắt buộc:
 | Mã | Mẫu hình | Kế thừa | Cấu phần đo được | `reference` | Số câu |
 |---|---|---|---|---|---|
 | **G1** | `A -[:REPLACES]-> B` | `SingleHop` | Router → truy vấn metadata | `field` | 50 |
-| **G2** | 1 `Component`, nhiều `Expression` theo thời gian | `SingleHop` | **Bộ lọc thời gian, chọn phiên bản** | `span` | 80 |
+| **G2′** | `Expression` có khoảng hiệu lực đóng `[tu, den)` — §4.4 | `SingleHop` | **Bộ lọc thời gian** | `field` + `span` | 80 |
 | **G3** | `Con -[:GUIDED_BY]-> Mẹ`, `Mẹ` bị `REPLACES` | `MultiHop` | Suy luận nhiều bước trên đồ thị | `composed` | 60 |
-| **G4** | `Expression` bị đóng bởi `Action` | `MultiHop` | Tổng hợp danh sách | `field[]` | 40 |
+| **G4′** | `(Action)-[:AFFECTS]->(Norm)` — §4.5 | `MultiHop` | Tổng hợp danh sách | `field[]` | 40 |
 | **G5** | `TransitionRule` đã duyệt gắn `Norm` | `MultiHop` | Router + suy luận điều kiện | `composed` | 30 |
 | **G6** | Hai `Norm` xung đột (định nghĩa chặt §4.2) | `MultiHop` | **Hành vi từ chối** | nhãn | 25 |
 | **G7** | Điều còn hiệu lực, nội dung độc lập | `SingleHop` | Vector retrieval + synthesis | `span` | 90 |
@@ -304,7 +306,11 @@ Hai điều kiện bắt buộc:
 
 Cột "cấu phần đo được" là lý do tồn tại của bảng: không có nó, một câu fail không quy được về hành động sửa (xem Mục 8).
 
-**Quota cố định, không cân theo số cạnh trong đồ thị.** 8.063 cạnh `REPLACES` phản ánh cấu trúc hệ thống văn bản, không phản ánh phân bố câu hỏi người dùng, cũng không phản ánh độ khó. G2 trọng số cao nhất vì câu hỏi "tại một thời điểm" là chỗ RAG gãy nhiều nhất. Khi có log truy vấn thật, thêm **G9 — từ log** và dịch dần trọng số về phân bố thật; đó mới là căn cứ hợp lệ để đổi tỷ trọng.
+> **G2′ và G4′ mang dấu phẩy** vì định nghĩa đã đổi sau khi audit đồ thị thật (§10.3): mẫu hình gốc của G2 có **0 ứng viên**, còn nguồn gốc của G4 quá hẹp. Mục đích đo của cả hai giữ nguyên.
+>
+> Dấu ′ chỉ dùng trong văn bản này để phân biệt với định nghĩa cũ. **Trong dữ liệu, mã nhóm vẫn là `G2` / `G4` thuần ASCII** (`"group": "G2"`, `"id": "G2-0137"`) — không đưa ký tự ′ vào id.
+
+**Quota cố định, không cân theo số cạnh trong đồ thị.** Số cạnh phản ánh cấu trúc hệ thống văn bản, không phản ánh phân bố câu hỏi người dùng, cũng không phản ánh độ khó — và §10.3e cho thấy nó còn trôi (`GUIDED_BY` lệch 22× so với con số các bản nháp dùng). G2′ trọng số cao nhất vì câu hỏi "tại một thời điểm" là chỗ RAG gãy nhiều nhất. Khi có log truy vấn thật, thêm **G9 — từ log** và dịch dần trọng số về phân bố thật; đó mới là căn cứ hợp lệ để đổi tỷ trọng.
 
 ### 4.1 — Khung một synthesizer
 
@@ -314,7 +320,8 @@ class LegalSingleHopSynthesizer(SingleHopQuerySynthesizer):
     name: str = "G2_temporal"
 
     async def _generate_scenarios(self, n, knowledge_graph, persona_list, callbacks):
-        cands = select_multi_version_components(knowledge_graph, prefer_ambiguous=True)
+        # Expression có khoảng hiệu lực đóng (§4.4), ưu tiên ca có "anh em gần" (§5.3)
+        cands = select_closed_interval_expressions(knowledge_graph, prefer_ambiguous=True)
         return [LegalScenario(nodes=[c.node], as_of=d, persona=p, style=s, length=l)
                 for c, d, p, s, l in balanced_product(
                     cands, sample_as_of_dates(cands), persona_list, STYLES, LENGTHS, n)]
@@ -330,13 +337,13 @@ class LegalSingleHopSynthesizer(SingleHopQuerySynthesizer):
 
 `reference` đến từ `extract_span()`, không đến từ `await llm(...)`. `paraphrase()` chỉ nằm trên đường của `user_input` và bị chặn ngay sau đó.
 
-**Chính sách lấy `as_of_date` cho G2** — chia đều ba loại, vì độ khó khác hẳn nhau:
+**Chính sách lấy `as_of_date` cho G2′** — chia đều ba loại, vì độ khó khác hẳn nhau. Cả ba neo vào `hieu_luc_den` của Expression; định nghĩa chi tiết và đáp án đúng từng loại ở **§4.4**.
 
 | Loại | Tỷ lệ | Vì sao |
 |---|---|---|
-| Giữa khoảng hiệu lực | 1/3 | Ca dễ, làm nền hồi quy |
-| Sát biên (±7 ngày quanh ngày sửa đổi) | 1/3 | Ca khó nhất — phân biệt được hệ có lọc thời gian thật hay không |
-| Đúng ngày hiệu lực | 1/3 | Bắt lỗi off-by-one ở điều kiện biên `>=` vs `>` |
+| `mid_interval` | 1/3 | Ca dễ, làm nền hồi quy |
+| `near_boundary` (±7 ngày quanh `hieu_luc_den`) | 1/3 | Ca khó nhất — phân biệt được hệ có lọc thời gian thật hay không |
+| `on_boundary` (đúng `hieu_luc_den`) | 1/3 | Bắt lỗi off-by-one ở điều kiện biên `>=` vs `>` |
 
 ### 4.2 — G6 phải định nghĩa chặt
 
@@ -366,6 +373,56 @@ Nhóm "không có đáp án" đo hallucination trực tiếp. Bốn trong năm c
 
 Công thức (c) đáng chú ý: nó bắt được lỗi mà (a),(b) không bắt được — hệ tìm ra đúng văn bản nhưng không kiểm tra mốc thời gian.
 
+### 4.4 — G2′: câu hỏi thời điểm dựng trên khoảng hiệu lực
+
+Định nghĩa gốc của G2 — *"1 Component có nhiều Expression theo thời gian"* — có **0 ứng viên** trong đồ thị thật (§10.3b). Mỗi Component chỉ có đúng một Expression; chức năng `amend_component()` chưa từng chạy.
+
+Thông tin thời gian vẫn có, chỉ ở đơn vị khác: **840.405 Expression mang khoảng hiệu lực đóng** `[hieu_luc_tu, hieu_luc_den)`. Đổi trục câu hỏi:
+
+| | Câu hỏi |
+|---|---|
+| ❌ Cũ (không có dữ liệu) | "Điều 6 **phiên bản nào** áp dụng tháng 7/2021?" |
+| ✅ Mới | "Tháng 7/2021 thì **quy định nào đang có hiệu lực** về việc này?" |
+
+**Mục đích đo không đổi:** hệ có lọc theo thời gian hay chỉ trả về bản mới nhất bất kể mốc được hỏi.
+
+Cách lấy ca: chọn `Expression` có `hieu_luc_den` xác định, đặt câu hỏi tại mốc `as_of` quanh biên đó. Đáp án gồm hai phần — `field` (`norm_id` đang hiệu lực tại `as_of`) và `span` (nội dung tương ứng).
+
+Bộ lọc bắt buộc khi lấy mẫu: `hieu_luc_den > hieu_luc_tu` và `hieu_luc_den.year <= 2030` (loại 14 bản ghi sentinel năm 3000 — §10.3g).
+
+Chính sách `as_of_kind` ở §4.1 giữ nguyên, neo vào `hieu_luc_den` của Expression thay vì vào ngày sửa đổi Điều:
+
+| Loại | Mốc `as_of` | Đáp án đúng |
+|---|---|---|
+| `mid_interval` | giữa `[tu, den)` | Expression này |
+| `near_boundary` | `den ± 7 ngày` | Expression này **hoặc** cái kế tiếp, tuỳ phía |
+| `on_boundary` | đúng `den` | **Cái kế tiếp** — `den` là mốc đóng, khoảng nửa mở |
+
+Hàng cuối là ca bắt lỗi off-by-one, và giờ nó có định nghĩa chặt: khoảng là **nửa mở** `[tu, den)`, nên tại đúng ngày `den` thì Expression đó đã hết hiệu lực.
+
+### 4.5 — G4′: lịch sử sửa đổi dựng trên `Action`/`AFFECTS`
+
+Nguồn cũ (`Expression.action_dong`) chỉ có 4.195 ca gói trong **104 văn bản** — quá tập trung, bộ đề sẽ lệch hẳn về một nhúm văn bản.
+
+Lịch sử sửa đổi thật nằm ở tầng `Action` (§10.3c):
+
+```cypher
+(vb_sua:Norm)<-[:ENACTED_BY]-(act:Action)-[:AFFECTS]->(vb_bi_sua:Norm)
+```
+
+16.692 văn bản bị tác động, 24.021 văn bản gây tác động, **7.914 văn bản bị sửa nhiều lần** — rộng hơn 19× và trải đều hơn hẳn.
+
+**Đổi độ phân giải, phải nói rõ:** `AFFECTS` nối `Action → Norm`, tức **cấp văn bản**, không phải cấp Điều. Nên câu hỏi G4′ là *"văn bản X đã bị những văn bản nào sửa đổi/tác động?"* chứ không phải *"Điều 6 đã bị sửa mấy lần?"*. Cấu phần đo được vẫn là khả năng tổng hợp danh sách.
+
+**Bắt buộc lọc trước khi dùng làm đáp án đúng:**
+
+| Thuộc tính `Action` | Điều kiện | Vì sao |
+|---|---|---|
+| `da_duyet` | `= true` | Chưa duyệt thì chưa phải sự thật, không được làm ground truth |
+| `confidence` | ≥ ngưỡng (chốt sau khi xem phân bố) | Đây là độ tin của bước trích xuất — dùng cạnh confidence thấp làm đáp án là vi phạm tinh thần I1 |
+
+Hai bộ lọc này áp dụng chung cho **G5** (`TransitionRule` cũng có khái niệm "đã duyệt"). Chúng chính là hiện thân cụ thể của `eval_set_ceiling` ở Mục 1 — thay vì tin toàn bộ đồ thị, ta chỉ lấy phần đồ thị tự khai là đáng tin.
+
 ---
 
 ## 5 — Sinh câu hỏi
@@ -390,7 +447,7 @@ Câu template có nguy cơ **rò rỉ từ khoá**: câu hỏi chứa đúng s�
 - **`lookup`** — người hỏi biết số hiệu. Đo graph/metadata, **không** đo retrieval.
 - **`situation`** — chỉ mô tả sự việc, cố ý lược bỏ số hiệu. Đo retrieval thật; bắt buộc qua `paraphrase()`.
 
-Mục tiêu **40% `lookup` / 60% `situation`**; G2 và G7 mỗi nhóm ≥ 50% `situation`.
+Mục tiêu **40% `lookup` / 60% `situation`**; G2′ và G7 mỗi nhóm ≥ 50% `situation`.
 
 ### 5.3 — Distractor có chủ đích
 
@@ -411,9 +468,9 @@ Vì đã có gold chunk chính xác, phần retrieval nên dùng metric **không
 | Nhóm | Dạng | Metric |
 |---|---|---|
 | G1, G5 | `field` | Exact-match sau chuẩn hoá số hiệu/ngày |
-| G4 | `field[]` | Set-F1 (phạt cả thiếu lẫn thừa) |
+| G4′ | `field[]` | Set-F1 (phạt cả thiếu lẫn thừa) |
 | G3 | `composed` | Exact-match nhãn **+** judge phần lý do — **chấm 2 điểm tách rời** |
-| G2, G7 | `span` | `Faithfulness`, `ResponseRelevancy`, `FactualCorrectness` |
+| G2′, G7 | `span` | `Faithfulness`, `ResponseRelevancy`, `FactualCorrectness` |
 | Mọi nhóm có gold chunk | — | `NonLLMContextRecall`, `NonLLMContextPrecisionWithReference` |
 | Có `distractor_ids` | — | `NoiseSensitivity` |
 | G6, G8 | nhãn | Tỷ lệ nhận diện đúng — **chỉ số riêng** |
@@ -486,9 +543,9 @@ Nếu `chunk_id` không còn tồn tại, **không phải sinh lại eval set** 
 | Gold chunk không nằm trong top-k | Retriever **thiếu** | Tăng k, đổi embedding, thêm BM25 hybrid |
 | Distractor xếp trên gold | Retriever **nhầm** | Thêm rerank, lọc theo metadata |
 | Gold có trong ngữ cảnh nhưng trả lời sai | **Synthesis** | Sửa prompt, đổi model |
-| G2 sai nhưng G7 đúng trên cùng văn bản | Thiếu **bộ lọc thời gian** | Đưa `as_of` vào điều kiện retrieval |
-| G2 chỉ sai ở `as_of_kind = on_boundary` | Lỗi **off-by-one** điều kiện biên | Kiểm `>=` vs `>` trong so ngày |
-| G1/G4 sai hàng loạt trong khi G7 tốt | **Không có đường đi tới metadata** | Thêm nhánh graph query, sửa router |
+| G2′ sai nhưng G7 đúng trên cùng văn bản | Thiếu **bộ lọc thời gian** | Đưa `as_of` vào điều kiện retrieval |
+| G2′ chỉ sai ở `as_of_kind = on_boundary` | Lỗi **off-by-one** điều kiện biên | Kiểm `>=` vs `>`; khoảng là nửa mở `[tu, den)` — §4.4 |
+| G1/G4′ sai hàng loạt trong khi G7 tốt | **Không có đường đi tới metadata** | Thêm nhánh graph query, sửa router |
 | G8 thấp | Không có **ngưỡng từ chối** | Đặt abstention threshold |
 | G8 cao nhưng G6 thấp | Biết nói "không rõ" nhưng **không nhận ra xung đột** | Cần bước phát hiện xung đột riêng — khác hẳn với chống bịa |
 
@@ -506,8 +563,9 @@ Hàng cuối là phân biệt dễ bỏ sót: hai nhóm cùng đo "hành vi từ
 - [ ] `chunk_id` tính lại được từ `expr_id` bằng `uuid5(_NS, …)` — kiểm ngẫu nhiên 20 item;
 - [ ] 0 câu paraphrase vi phạm C2;
 - [ ] đủ 400 câu theo quota Mục 4, lệch mỗi nhóm ≤ 10%;
-- [ ] `situation` ≥ 55% toàn bộ; G2/G7 mỗi nhóm ≥ 50%;
-- [ ] G2 có đủ ba loại `as_of_kind`, mỗi loại ≥ 25%;
+- [ ] `situation` ≥ 55% toàn bộ; G2′/G7 mỗi nhóm ≥ 50%;
+- [ ] G2′ có đủ ba loại `as_of_kind`, mỗi loại ≥ 25%;
+- [ ] G4′/G5 chỉ lấy `Action`/`TransitionRule` có `da_duyet = true` và `confidence` ≥ ngưỡng (§4.5);
 - [ ] G6 và G8 human-verified 100%;
 - [ ] file JSONL đã freeze, đủ 3 trường version, đã commit.
 
@@ -520,7 +578,7 @@ Chưa đặt ngưỡng điểm mục tiêu cho hệ RAG — **vòng đầu để
 1. ~~Xác nhận `chunk_id` có ổn định qua re-index không~~ → **đã kiểm, xem §10.1.** Id ổn định; rủi ro thật nằm ở chỗ khác và đã được xử lý bằng khoá kép (§7.1).
 2. Xác nhận tên nhãn/quan hệ Neo4j thật — lệch thì chỉ phải sửa Cypher, không ảnh hưởng kiến trúc.
 3. Nạp đồ thị → `KnowledgeGraph` (§3.1), không LLM.
-4. **Dựng G1 trước** (đơn giản nhất, `reference_type = field`), chạy hết 5 cổng để hiệu chỉnh pipeline kiểm tra, rồi mới mở sang G2/G7.
+4. **Dựng G1 trước** (đơn giản nhất, `reference_type = field`), chạy hết 5 cổng để hiệu chỉnh pipeline kiểm tra, rồi mới mở sang G2′/G7.
 5. Chạy C5 trên mẫu phân tầng → chốt `eval_set_ceiling` → freeze.
 
 ### 10.1 — Kết quả kiểm chứng cơ chế index của `legal-rag`
@@ -579,7 +637,9 @@ MATCH (d)-[:HAS_PART*0..]->(x:Component)-[:HAS_VERSION]->(e:Expression)
 RETURN collect(e.text) AS texts        -- không lọc hieu_luc_den
 ```
 
-Khoản có 2 phiên bản (cũ đã đóng + mới đang mở) thì `texts` gom **cả hai** ⇒ body đem embed có thể trộn hai phiên bản. **Cần đối chiếu dữ liệu thật để xác nhận** — nếu đúng thì nó đánh thẳng vào nhóm G2, nhóm có trọng số cao nhất trong bộ eval.
+Khoản có 2 phiên bản (cũ đã đóng + mới đang mở) thì `texts` gom **cả hai** ⇒ body đem embed có thể trộn hai phiên bản.
+
+> **✅ ĐÃ KIỂM — BÁC BỎ.** Không Component nào có quá 1 Expression, nên không có gì để trộn. Kết quả đầy đủ ở **§10.3a**. Nghi vấn này tuy sai nhưng dẫn tới hai phát hiện lớn hơn (§10.3b, §10.3c) — chính là lý do G2 và G4 phải định nghĩa lại.
 
 **Chi phí LLM một lần sinh trọn bộ:**
 
@@ -589,9 +649,72 @@ Khoản có 2 phiên bản (cũ đã đóng + mới đang mở) thì `texts` gom
 | Cổng C3 entailment | ~400 (0 nếu chạy NLI model local) |
 | Cổng C4 ablation | ~400 |
 | **Tổng sinh** | **~1.100** |
-| Mỗi lần *chạy* eval về sau | ~170 (chỉ judge cho G2/G7) |
+| Mỗi lần *chạy* eval về sau | ~170 (chỉ judge cho G2′/G7) |
 
 Phần lớn khối lượng nằm ở lần sinh đầu; các vòng tinh chỉnh retrieval về sau gần như miễn phí vì phần retrieval chấm bằng metric không-LLM.
+
+### 10.3 — Audit đồ thị thật (2026-08-06)
+
+Chạy `checks/check-texts-mixing.cypher` + các query đếm trên Neo4j production. Kết quả **bác bỏ §10.2b** nhưng làm lộ hai vấn đề lớn hơn, buộc phải định nghĩa lại G2 và G4.
+
+**a. `texts` KHÔNG trộn phiên bản** — nghi vấn §10.2b đóng lại.
+
+| | |
+|---|---|
+| Component | 2.630.398 |
+| Expression | 2.630.398 |
+| Component có >1 Expression | **0** |
+| Text trùng trong subtree (mẫu 300 Điều) | 0 |
+
+**b. Không có versioning cấp Component ⇒ G2 theo định nghĩa cũ có 0 ứng viên.**
+
+```
+Expression.action_tao IS NOT NULL  →  0          ← amend_component() chưa từng chạy
+Expression.action_dong IS NOT NULL →  4.195
+Expression đang mở                 →  1.781.379
+Expression đã đóng                 →  849.019
+```
+
+Mẫu hình *"1 Component có nhiều Expression theo thời gian"* không tồn tại ca nào. **G2 phải chuyển sang khoảng hiệu lực** — xem §4.4.
+
+**c. Lịch sử sửa đổi nằm ở `Action`/`AFFECTS`, không ở chuỗi Expression.**
+
+```
+(Action)-[:ENACTED_BY]->(Norm)     90.343     ← văn bản ban hành hành vi sửa
+(Action)-[:AFFECTS]---->(Norm)     80.398     ← văn bản bị tác động
+Action.keys = confidence, ngay_hieu_luc, action_id, loai, enacted_by, da_duyet
+```
+
+16.692 văn bản bị tác động / 24.021 văn bản gây tác động; **7.914 văn bản bị sửa nhiều lần** (nhiều nhất: 997 lần). So với `action_dong` chỉ 4.195 ca gói trong **104 văn bản**, đây là nguồn rộng hơn 19× và trải đều hơn hẳn. **G4 chuyển sang nguồn này** — xem §4.5.
+
+**d. `FETCH` duyệt trùng đường đi.** `HAS_PART*` khớp mọi đường đi mà đồ thị không phải cây thuần: `Dieu 2 / 111-2018-TT-BTC` có **7 đường đi** từ Norm (2 đường dài 2, 5 đường dài 3) tuy chỉ có 1 Component / 1 Expression. `point_id` giống nhau nên upsert idempotent — **không hỏng dữ liệu**, nhưng `build_text_unit()` + `encode()` chạy lặp cho cùng nội dung. Embedding là phần đắt nhất pipeline; thêm `WITH DISTINCT d` là đủ.
+
+> Query `Q3` bản đầu trong `checks/` đã đếm nhầm đường đi thành số phiên bản và cho báo động giả. Đã sửa thành `count(DISTINCT de)` kèm ghi chú.
+
+**e. Số liệu audit trong các bản nháp đã lệch.**
+
+| Quan hệ | Nháp ghi | Thực đo |
+|---|---|---|
+| REPLACES | 8.063 | 8.063 ✅ |
+| AMENDS | 8.193 | 8.205 |
+| GUIDED_BY | 5.887 | **129.276** ← lệch 22× |
+
+Quan hệ/nhãn chưa từng nhắc trong thiết kế: `AFFECTS` 80.398 · `ENACTED_BY` 90.343 · `HAS_TRANSITION` 941 · `CONSOLIDATES` 139 · `REFERENCES` 27; node `Action` 90.343 · `TransitionRule` 941 · `IngestRun` 764.
+
+Đây là một lý do nữa để **không cân quota theo số cạnh** (Mục 4): số cạnh vừa lệch vừa trôi.
+
+**f. Kho ứng viên thực tế — mọi nhóm đều đủ sau khi định nghĩa lại.**
+
+| Nhóm | Quota | Ứng viên thực có | |
+|---|---|---|---|
+| G1 | 50 | 8.063 cạnh REPLACES / 7.617 VB bị thay | dư |
+| **G2′** | 80 | 840.405 Expression có khoảng hiệu lực đóng hợp lệ | dư |
+| G3 | 60 | 65.451 ca / 31.572 VB con | dư |
+| **G4′** | 40 | 7.914 VB bị sửa nhiều lần | dư |
+| G5 | 30 | 941 TransitionRule / 340 VB | đủ |
+| G7 | 90 | 1.781.379 Expression đang mở | dư |
+
+**g. Rác dữ liệu cần loại khi lấy mẫu.** Phân bố `hieu_luc_den` theo năm có **14 bản ghi năm 3000** (giá trị sentinel). Năm 2027–2028 (80 bản ghi) là ngày hết hiệu lực định trước — hợp lệ, giữ. Bộ lọc: `hieu_luc_den.year <= 2030`.
 
 ---
 
@@ -602,9 +725,9 @@ Bản `lookup` là nguồn sự thật; bản `situation` là mục tiêu cho `p
 | Nhóm | `lookup` | `situation` |
 |---|---|---|
 | **G1** | `{norm_id} bị thay thế bởi văn bản nào?` | *(nhóm này chủ yếu lookup)* |
-| **G2** | `Nội dung {component_ref} của {norm_id} tại thời điểm {as_of} là gì?` | `Tháng {m}/{y}, {tình huống persona} thì quy định về {chủ đề} thế nào?` — bỏ **norm_id**, **component_ref** |
+| **G2′** | `Tại thời điểm {as_of}, quy định về {chủ đề} áp dụng theo văn bản nào?` | `Tháng {m}/{y}, {tình huống persona} thì làm theo quy định nào?` — bỏ **norm_id** |
 | **G3** | `{norm_con} hướng dẫn {norm_me}; {norm_me} đã bị {norm_moi} thay thế. {norm_con} còn hiệu lực không?` | `{tình huống}, tôi đang làm theo hướng dẫn cũ thì nay có còn áp dụng được không?` |
-| **G4** | `{component_ref} của {norm_id} đã được sửa đổi bởi những văn bản nào?` | `Quy định về {chủ đề} đã thay đổi những lần nào?` |
+| **G4′** | `{norm_id} đã bị những văn bản nào sửa đổi, bổ sung?` | `Quy định về {chủ đề} đã thay đổi những lần nào?` |
 | **G5** | `Hồ sơ nộp trước ngày {date} thì áp dụng {norm_cu} hay {norm_moi}?` | `Tôi nộp hồ sơ từ {tháng}, giờ mới được xử lý thì theo quy định nào?` |
 | **G6** | `Với {hành vi}, {norm_a} quy định {hq_a} còn {norm_b} quy định {hq_b}. Áp dụng mức nào?` | `{tình huống}, tôi thấy hai nơi ghi khác nhau, theo cái nào?` |
 | **G7** | `{component_ref} của {norm_id} quy định gì?` | `{tình huống persona} thì cần làm gì?` |
@@ -617,4 +740,7 @@ Bản `lookup` là nguồn sự thật; bản `situation` là mục tiêu cho `p
 - **Nguyên tắc bất biến #7** được viện dẫn cho hành vi từ chối (G6) nhưng chưa trích nội dung — cần chép một dòng để tài liệu tự đứng được.
 - Ngưỡng entailment cho C3, và mô hình dùng chạy C4, chưa chốt.
 - ~~Index có lưu offset ký tự không?~~ → **đã rõ:** Qdrant lưu `payload["text"]` = đúng chuỗi window, nên offset tính trực tiếp trên đó được. Xem §10.1 R3.
-- §10.2(b) — cần chạy Cypher đối chiếu trên dữ liệu thật để xác nhận `texts` có trộn phiên bản hay không. Đây là điều kiện tiên quyết cho nhóm G2.
+- ~~§10.2(b) — `texts` có trộn phiên bản không?~~ → **đã chạy, bác bỏ.** Kết quả đầy đủ ở §10.3; script ở `checks/check-texts-mixing.cypher`.
+- **Ngưỡng `Action.confidence`** cho G4′/G5 chưa chốt — cần xem phân bố thực trước khi đặt (§4.5).
+- `AFFECTS` ở cấp Norm nên G4′ mất độ phân giải cấp Điều. Nếu về sau cần câu hỏi "Điều nào bị sửa", phải bổ sung liên kết Action → Component ở tầng ingest.
+- Báo nhóm `legal-rag` hai việc: bug resume chỉ kiểm `part=0` (§10.2a) và `FETCH` duyệt trùng đường đi (§10.3d).
