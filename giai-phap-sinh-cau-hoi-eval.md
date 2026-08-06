@@ -100,6 +100,8 @@ Nguồn 2 hay bị bỏ quên nhưng bắt buộc: không có nó thì biết đ
 
 → `reference` = đúng chuỗi đó + toạ độ `{c_88213, 412, 690}`. Máy mở chunk gốc đối chiếu được từng chữ (bất biến **I1**).
 
+> *`c_88213` ở đây là id rút gọn cho dễ đọc. Trong `legal-rag`, chunk id thật là uuid Qdrant và được lưu kèm `expr_id` + hash nội dung — lý do ở §7.1 và §10.1.*
+
 **B4 · Đặt câu hỏi.** Ghép khuôn cố định:
 > "Nội dung **Điều 6** của **Nghị định 15/2018/NĐ-CP** tại thời điểm **05/07/2021** là gì?"
 
@@ -122,7 +124,7 @@ Nếu LLM tự chế ra "Nghị định 15/2020" → **loại thẳng**, không 
 
 | Cổng | Hỏi gì | Kết quả |
 |---|---|---|
-| C1 | Chuỗi đáp án có nằm đúng ở `c_88213:412-690`? | ✅ |
+| C1 | Chunk còn nguyên nội dung (hash khớp) **và** chuỗi đáp án nằm đúng ở `412-690`? | ✅ |
 | C3 | Chỉ đọc chunk đó có suy ra đáp án không? | ✅ |
 | C4 | Bỏ hết ngữ cảnh, mô hình có tự trả lời đúng? | ❌ không → **tốt**, câu này thật sự cần retrieval |
 | C5 | Người review (lấy mẫu) | 🎲 |
@@ -134,8 +136,10 @@ Nếu LLM tự chế ra "Nghị định 15/2020" → **loại thẳng**, không 
   "id": "G2-0137",
   "user_input": "Đầu tháng 7/2021 tôi làm hồ sơ công bố sản phẩm thực phẩm thì phải theo quy định nào?",
   "reference": "Tổ chức, cá nhân sản xuất, kinh doanh thực phẩm phải đăng ký bản công bố…",
-  "gold_spans": [{"chunk_id": "c_88213", "start": 412, "end": 690}],
-  "distractor_ids": ["c_71902"],
+  "gold_spans": [{"expr_id": "15/2018/NĐ-CP::Dieu 6@2021-07-01", "part": 0,
+                  "chunk_id": "7fb4b963-…", "start": 412, "end": 690,
+                  "chunk_text_sha256": "a3f1…"}],
+  "distractor_ids": ["4bb8185d-…"],
   "as_of_date": "2021-07-05",
   "as_of_kind": "near_boundary",
   "grader": "faithfulness+non_llm_context_recall"
@@ -185,7 +189,7 @@ Mọi `reference` phải thuộc đúng một trong ba dạng:
 
 | Dạng | Mô tả | Ví dụ |
 |---|---|---|
-| **`span`** | Trích **nguyên văn** một đoạn, kèm offset | `{"chunk_id":"c_88213","start":412,"end":690,"text":"Tổ chức, cá nhân sản xuất…"}` |
+| **`span`** | Trích **nguyên văn** một đoạn, kèm khoá kép + offset | `{"expr_id":"15/2018/NĐ-CP::Dieu 6@2021-07-01","part":0,"start":412,"end":690,"text":"Tổ chức, cá nhân sản xuất…"}` |
 | **`field`** | Giá trị deterministic từ metadata | `"15/2018/NĐ-CP"`, `"2018-02-02"` |
 | **`composed`** | Ghép `span`/`field` vào khuôn cố định, **không có chữ tự do** | `"{norm_id} bị thay thế bởi {new_id}, hiệu lực từ {date}."` |
 
@@ -193,7 +197,7 @@ Cấm dạng thứ tư — LLM đọc chunk rồi viết đáp án bằng lời 
 
 ### I2 · Đáp án tái dựng được từ đúng phần đã trích dẫn
 
-Mỗi item mang `gold_spans: [{chunk_id, start, end}]`. Bất biến: **xoá hết mọi thứ ngoài các span đó thì đáp án vẫn suy ra được.** Cần thông tin ở chỗ khác mới trả lời được ⇒ span trích thiếu ⇒ sửa hoặc loại item.
+Mỗi item mang `gold_spans: [{expr_id, part, chunk_id, start, end, chunk_text_sha256}]` (cấu trúc khoá kép — §7.1). Bất biến: **xoá hết mọi thứ ngoài các span đó thì đáp án vẫn suy ra được.** Cần thông tin ở chỗ khác mới trả lời được ⇒ span trích thiếu ⇒ sửa hoặc loại item.
 
 ### I3 · LLM chỉ được đổi cách diễn đạt câu hỏi
 
@@ -224,7 +228,7 @@ Kiểm thứ hai đặc biệt quan trọng với luật VN: nhiều điều kho
 
 | Cổng | Kiểm | Công cụ | Trượt thì | Bất biến |
 |---|---|---|---|---|
-| **C1** | `span.text` tồn tại nguyên văn tại đúng offset trong nguồn | so chuỗi | **Loại + báo lỗi pipeline** | I1, I2 |
+| **C1** | `sha256(chunk hiện tại) == chunk_text_sha256` **và** `span.text` nằm đúng offset | hash + so chuỗi | **Loại + báo lỗi pipeline** | I1, I2 |
 | **C2** | Bảo toàn thực thể sau paraphrase | regex | Loại câu paraphrase, giữ bản template | I3 |
 | **C3** | `gold_spans` ⊨ `reference` | NLI / judge | Loại | I4a |
 | **C4** | Không trả lời được khi bỏ ngữ cảnh | chạy không ngữ cảnh | Hạ nhóm | I4b |
@@ -232,7 +236,7 @@ Kiểm thứ hai đặc biệt quan trọng với luật VN: nhiều điều kho
 
 Tỷ lệ sống sót từng cổng là **số liệu vận hành, phải log**:
 
-- C1 rớt ⇒ lỗi mapping chunk. Đây là lỗi pipeline, **phải sửa chứ không phải loại câu**.
+- C1 rớt ⇒ chunk đã **đổi nội dung** kể từ lúc sinh (thường do re-window — §10.1), hoặc lỗi mapping. Đây là lỗi pipeline, **phải sửa chứ không phải loại câu**. Phần hash là thứ duy nhất bắt được ca "id còn nguyên nhưng text đã khác" — xem §10.1.
 - C2 rớt nhiều ⇒ prompt paraphrase quá lỏng.
 - C4 rớt nhiều ⇒ đang chọn toàn điều khoản phổ thông, cần lấy sâu hơn.
 
@@ -280,7 +284,7 @@ for r in neo4j.run(CYPHER_RELATIONS):          # REPLACES | AMENDS | GUIDED_BY
 Hai điều kiện bắt buộc:
 
 - **`page_content` là nguyên văn.** Toàn bộ cơ chế Mục 2 dựa trên đối chiếu chuỗi ký tự với nguồn — một lần tóm tắt xen vào là mất khả năng đó.
-- **`chunk_ids` lấy từ chính index đang phục vụ RAG**, không chunk lại. Đây là điều kiện để tính được `context_recall`.
+- **`chunk_ids` lấy từ chính index đang phục vụ RAG**, không chunk lại. Đây là điều kiện để tính được `context_recall`. Trong `legal-rag`, `chunk_id` chính là `point_id` của Qdrant và **tính lại được** từ `expr_id` — xem §10.1.
 
 ---
 
@@ -435,10 +439,16 @@ Một dòng JSONL / item. Freeze lại; mọi lần chạy đọc đúng file đ
 
   "reference": "Tổ chức, cá nhân sản xuất, kinh doanh thực phẩm phải đăng ký bản công bố…",
   "reference_type": "span",
-  "gold_spans": [{"chunk_id": "c_88213", "start": 412, "end": 690}],
+  "gold_spans": [{
+    "expr_id": "15/2018/NĐ-CP::Dieu 6@2021-07-01",
+    "part": 0,
+    "chunk_id": "7fb4b963-b906-526e-9d4f-73073760bba7",
+    "start": 412, "end": 690,
+    "chunk_text_sha256": "a3f1…"
+  }],
   "reference_contexts": ["…"],
   "gold_node_ids": ["Expression:41207"],
-  "distractor_ids": ["c_71902"],
+  "distractor_ids": ["4bb8185d-…"],
 
   "gates": {"C1": "pass", "C2": "pass", "C3": "pass", "C4": "pass", "C5": "not_sampled"},
   "grader": "faithfulness+non_llm_context_recall",
@@ -452,6 +462,18 @@ Một dòng JSONL / item. Freeze lại; mọi lần chạy đọc đúng file đ
 ```
 
 Ba trường version là bắt buộc: đồ thị hoặc index đổi thì bộ eval stale và so sánh giữa các lần chạy mất ý nghĩa. Khi một trong ba đổi, sinh bộ mới và **giữ bộ cũ** để so hồi quy.
+
+### 7.1 — Vì sao `gold_spans` cần khoá kép
+
+| Trường | Vai trò | Hỏng khi nào |
+|---|---|---|
+| `expr_id` | **Khoá bền.** Tự mô tả, đọc được bằng mắt, và `chunk_id` tính lại được từ nó | Chỉ đổi khi `hieu_luc_tu` được đính chính |
+| `part` | Thứ tự cửa sổ trong Expression | **Trôi theo nội dung** — xem §10.1 |
+| `chunk_id` | Khoá tra cứu nhanh vào Qdrant | Đổi theo `expr_id` |
+| `chunk_text_sha256` | **Chốt chặn** — phát hiện "id còn nguyên nhưng text đã khác" | — |
+| `start` / `end` | Offset **trên `payload["text"]`**, không phải trên text đã embed | Trôi theo `part` |
+
+Nếu `chunk_id` không còn tồn tại, **không phải sinh lại eval set** — tính lại bằng `uuid5(_NS, expr_id)` rồi chạy lại cổng C1. Đó là lý do `expr_id` phải nằm trong schema chứ không chỉ `chunk_id`.
 
 ---
 
@@ -477,9 +499,11 @@ Hàng cuối là phân biệt dễ bỏ sót: hai nhóm cùng đo "hành vi từ
 ## 9 — Nghiệm thu
 
 - [ ] `eval_set_ceiling ≥ 95%` (cổng C5), đo **riêng từng nhóm**;
-- [ ] cổng C1 rớt **0 câu** — C1 rớt là lỗi pipeline mapping chunk, phải sửa chứ không phải loại câu;
+- [ ] cổng C1 rớt **0 câu** — C1 rớt là lỗi pipeline (chunk đổi nội dung hoặc mapping sai), phải sửa chứ không phải loại câu;
 - [ ] 100% item có `reference_type ∈ {span, field, composed}`; **0 item** có reference do LLM viết;
-- [ ] 100% item có `gold_spans` không rỗng, mọi `chunk_id` tồn tại trong index hiện hành, mọi `span.text` khớp nguyên văn tại offset;
+- [ ] 100% item có `gold_spans` không rỗng, đủ **cả 5 trường khoá** (`expr_id`, `part`, `chunk_id`, offset, `chunk_text_sha256`);
+- [ ] mọi `chunk_id` tồn tại trong index hiện hành, mọi hash khớp, mọi `span.text` khớp nguyên văn tại offset trên `payload["text"]`;
+- [ ] `chunk_id` tính lại được từ `expr_id` bằng `uuid5(_NS, …)` — kiểm ngẫu nhiên 20 item;
 - [ ] 0 câu paraphrase vi phạm C2;
 - [ ] đủ 400 câu theo quota Mục 4, lệch mỗi nhóm ≤ 10%;
 - [ ] `situation` ≥ 55% toàn bộ; G2/G7 mỗi nhóm ≥ 50%;
@@ -493,11 +517,69 @@ Chưa đặt ngưỡng điểm mục tiêu cho hệ RAG — **vòng đầu để
 
 ## 10 — Thứ tự triển khai & chi phí
 
-1. **Xác nhận `chunk_id` có ổn định qua re-index không.** Nếu id đổi mỗi lần re-index thì toàn bộ `gold_spans` mục ngay lần re-index đầu tiên và cả thiết kế sập. Phải khoá bằng identifier bền hơn **trước khi sinh câu nào**. Đây là rủi ro số một.
+1. ~~Xác nhận `chunk_id` có ổn định qua re-index không~~ → **đã kiểm, xem §10.1.** Id ổn định; rủi ro thật nằm ở chỗ khác và đã được xử lý bằng khoá kép (§7.1).
 2. Xác nhận tên nhãn/quan hệ Neo4j thật — lệch thì chỉ phải sửa Cypher, không ảnh hưởng kiến trúc.
 3. Nạp đồ thị → `KnowledgeGraph` (§3.1), không LLM.
 4. **Dựng G1 trước** (đơn giản nhất, `reference_type = field`), chạy hết 5 cổng để hiệu chỉnh pipeline kiểm tra, rồi mới mở sang G2/G7.
 5. Chạy C5 trên mẫu phân tầng → chốt `eval_set_ceiling` → freeze.
+
+### 10.1 — Kết quả kiểm chứng cơ chế index của `legal-rag`
+
+Đã đọc code và chạy probe trên `Chatbot-Law/chatbot/legal_rag`. Kết luận thay đổi một giả định lớn của các bản nháp trước.
+
+**Chuỗi sinh id — deterministic:**
+
+```
+comp_id  = "{norm_id}::{duong_dan}"                      graph/ingest.py:40
+expr_id  = "{comp_id}@{ngay_hieu_luc|NA}"                graph/ingest.py:43
+point_id = uuid5(_NS, expr_id)              nếu part=0   retrieval/index.py:41-42
+         = uuid5(_NS, "{expr_id}#{part}")   nếu part>0
+_NS      = uuid5(NAMESPACE_URL, "legal-rag/expr")        retrieval/index.py:16 — hằng số
+```
+
+✅ **`chunk_id` ỔN ĐỊNH qua re-index.** Hàm thuần: không random, không timestamp lúc chạy, không autoincrement. Cơ chế resume `skip_existing` (`index.py:92,127`) chỉ chạy được nếu tính chất này đúng — tức hệ đang dựa vào nó trong production.
+
+**Nhưng có ba rủi ro thật, và rủi ro lớn nhất *tệ hơn* việc id đổi:**
+
+| | Rủi ro | Cổng nào bắt được |
+|---|---|---|
+| **R1** | **`part` trôi theo nội dung.** `index.py:104-105` ghép **toàn bộ Khoản/Điểm con** thành `body` rồi mới `split_windows(body, 1000, 120)`. Sửa **một Khoản** → ranh giới mọi cửa sổ dịch → **uuid giữ nguyên nhưng text bên trong đổi hết**. Đổi `window_chars`/`window_overlap` cũng vậy | ❗ Không cổng nào, **trừ khi có `chunk_text_sha256`** |
+| **R2** | `expr_id` nhúng `hieu_luc_tu` ⇒ đính chính ngày hiệu lực làm đổi `point_id`, span mồ côi | ✅ C1 |
+| **R3** | Text đem embed = `build_text_unit()` (có header) **≠** `payload["text"]` = `w` (`index.py:119`). Offset phải tính trên `payload["text"]` | ✅ C1 |
+
+Probe xác nhận R1 — sửa **duy nhất Khoản 1** của một Điều 4 cửa sổ:
+
+```
+part=0  id=7fb4b963  text đổi: CÓ
+part=1  id=4bb8185d  text đổi: CÓ
+part=2  id=5959f7ea  text đổi: CÓ
+part=3  id=8fcb73c4  text đổi: CÓ
+```
+
+Id còn nguyên, nội dung đổi hết, **không có exception nào được ném ra**. Đây chính là lý do cổng C1 phải kiểm **hash** chứ không chỉ so chuỗi tại offset, và lý do `gold_spans` cần `chunk_text_sha256`. Dùng lại `content_hash()` sẵn có ở `cdi/hashing.py` cho khớp chuẩn hoá whitespace.
+
+**Hệ quả thiết kế:** neo offset vào `body` của Expression, **không** vào window. `part` bấp bênh còn `expr_id` ổn định ⇒ lưu offset trong body rồi ánh xạ sang window lúc chấm; đổi `window_chars` về sau không làm hỏng eval set.
+
+### 10.2 — Hai phát hiện ngoài phạm vi eval
+
+Gặp khi đọc code, không ảnh hưởng thiết kế này nhưng ảnh hưởng độ tin của index — nên báo cho nhóm `legal-rag`:
+
+**a. Resume chỉ kiểm `part=0`** — `retrieval/index.py:127`:
+
+```python
+if existing and point_id(r["expr_id"]) in existing:   # thiếu tham số part
+```
+
+Điều nở từ 1 lên 3 cửa sổ: resume thấy part=0 đã có → skip cả Điều → **part=1,2 không bao giờ được tạo**. Điều co từ 3 xuống 2: part=2 mồ côi, chỉ `delete_by_exprs` trong CDI prune mới dọn.
+
+**b. `FETCH` không lọc theo thời điểm** — `retrieval/index.py:26-30`:
+
+```cypher
+MATCH (d)-[:HAS_PART*0..]->(x:Component)-[:HAS_VERSION]->(e:Expression)
+RETURN collect(e.text) AS texts        -- không lọc hieu_luc_den
+```
+
+Khoản có 2 phiên bản (cũ đã đóng + mới đang mở) thì `texts` gom **cả hai** ⇒ body đem embed có thể trộn hai phiên bản. **Cần đối chiếu dữ liệu thật để xác nhận** — nếu đúng thì nó đánh thẳng vào nhóm G2, nhóm có trọng số cao nhất trong bộ eval.
 
 **Chi phí LLM một lần sinh trọn bộ:**
 
@@ -534,4 +616,5 @@ Bản `lookup` là nguồn sự thật; bản `situation` là mục tiêu cho `p
 
 - **Nguyên tắc bất biến #7** được viện dẫn cho hành vi từ chối (G6) nhưng chưa trích nội dung — cần chép một dòng để tài liệu tự đứng được.
 - Ngưỡng entailment cho C3, và mô hình dùng chạy C4, chưa chốt.
-- Index hiện hành có lưu offset ký tự của chunk trong văn bản gốc không? Nếu không, `gold_spans` phải rút gọn về `chunk_id` và bất biến **I2 yếu đi một bậc** — vẫn kiểm được "đáp án nằm trong chunk nào", nhưng không kiểm được "nằm ở đoạn nào trong chunk".
+- ~~Index có lưu offset ký tự không?~~ → **đã rõ:** Qdrant lưu `payload["text"]` = đúng chuỗi window, nên offset tính trực tiếp trên đó được. Xem §10.1 R3.
+- §10.2(b) — cần chạy Cypher đối chiếu trên dữ liệu thật để xác nhận `texts` có trộn phiên bản hay không. Đây là điều kiện tiên quyết cho nhóm G2.
