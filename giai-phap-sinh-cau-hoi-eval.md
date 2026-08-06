@@ -616,7 +616,7 @@ Chưa đặt ngưỡng điểm mục tiêu cho hệ RAG — **vòng đầu để
 1. ~~Xác nhận `chunk_id` có ổn định qua re-index không~~ → **đã kiểm, xem §10.1.** Id ổn định; rủi ro thật nằm ở chỗ khác và đã được xử lý bằng khoá kép (§7.1).
 2. Xác nhận tên nhãn/quan hệ Neo4j thật — lệch thì chỉ phải sửa Cypher, không ảnh hưởng kiến trúc.
 3. Nạp đồ thị → `KnowledgeGraph` (§3.1), không LLM.
-4. **Dựng G1 trước** (đơn giản nhất, `reference_type = field`), chạy hết 5 cổng để hiệu chỉnh pipeline kiểm tra, rồi mới mở sang G2′/G7.
+4. ~~**Dựng G1 trước**~~ → **đã xong**, 50/50 item, `C1 fail = 0`. Code ở `generator/`, kết quả `out/g1.jsonl`. Xem §10.4.
 5. Chạy C5 trên mẫu phân tầng → chốt `eval_set_ceiling` → freeze.
 
 ### 10.1 — Kết quả kiểm chứng cơ chế index của `legal-rag`
@@ -772,6 +772,28 @@ Quan hệ/nhãn chưa từng nhắc trong thiết kế: `AFFECTS` 80.398 · `ENA
 `TransitionRule` (941 node) dùng **thang khác**, chạy tới 1.0: 730 ở 1.0 · 139 ở 0.9 · 62 ở 0.8 · phần còn lại rải rác. **Tất cả đều `da_duyet = true`.**
 
 ⇒ Hai loại node có hai thang điểm khác nhau ⇒ **ngưỡng phải đặt riêng cho từng loại**, không dùng chung một hằng số.
+
+### 10.4 — G1 đã dựng xong (2026-08-06)
+
+Code `generator/`, chạy bằng venv của `legal-rag` — **không cần LLM, không cần `ragas`**. Chi tiết vận hành ở [`generator/README.md`](generator/README.md).
+
+```
+point_id đối chiếu index: 20/20 khớp     C1 pass          50/50
+50 item -> out/g1.jsonl                  có gold_spans    50/50
+tỷ lệ sống sót 73.5% (50/68 đã xét)      span có từ khoá  43/50
+```
+
+**Chiều `REPLACES` đã xác minh trên dữ liệu, không suy đoán:** `(a)-[:REPLACES]->(b)` = *a thay thế b*, đúng ở 7.933/8.003 cạnh (so `ngay_hieu_luc`), và Expression của `b` bị đóng trong khi của `a` còn mở. **70 cạnh còn lại (24 ngược chiều + 46 cùng ngày) bị loại ở mệnh đề `WHERE`** — dùng chúng làm đáp án đúng sẽ hạ trần `eval_set_ceiling` mà không ai biết.
+
+Ba thứ phát sinh khi dựng, đều không đoán trước được từ thiết kế:
+
+**a. Số hiệu văn bản có chữ số ở đuôi.** Regex đầu tiên cắt `03/2022/QH15` thành `03/2022/QH` — số hiệu vô nghĩa, và exact-match sẽ báo sai **toàn bộ nhóm Luật**. Lỗi này lọt qua mọi cổng vì cả câu hỏi lẫn đáp án đều sai *nhất quán*; chỉ đọc bằng mắt mới thấy. Bài học cho các nhóm sau: **chuẩn hoá định danh phải có test riêng**, không dựa vào cổng.
+
+**b. Số hiệu xuất hiện ≠ bằng chứng bãi bỏ.** Chunk đầu tiên chứa số hiệu văn bản cũ thường chỉ là chỗ dẫn chiếu. Phải duyệt hết chunk của văn bản rồi **chấm điểm** (`gold._diem_bang_chung`), lấy cao nhất, ngưỡng nhận ≥3. Không có bước này thì `context_recall` chấm trên chunk không trả lời được câu hỏi — chỉ số đẹp nhưng vô nghĩa.
+
+**c. Span phải nới ngược lên câu dẫn.** Điều khoản thi hành viết *"Các quy định sau đây hết hiệu lực…:"* rồi mới liệt kê. Cắt riêng mục danh sách thì span mất câu mang nghĩa: lần chạy đầu chỉ 8/48 span chứa từ khoá bãi bỏ, sau khi nới lên thành 43/50.
+
+**Còn lại:** C4 (ablation) cần LLM, đang `not_run`. C5 chưa lấy mẫu — cần người đọc, ưu tiên nhóm Luật (`/QH`), nơi câu hỏi đặt vào một *luật sửa đổi* thay vì luật gốc có thể khiên cưỡng dù đồ thị và văn bản đều xác nhận.
 
 ---
 
