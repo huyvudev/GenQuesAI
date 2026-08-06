@@ -85,6 +85,36 @@ def co_so_hieu(s: str | None) -> bool:
     return bool(s and _SO_HIEU_I.search(s))
 
 
+# Tiêu đề Norm có dạng: "Thông tư số 12/2016/TT-BTTTT Quy định về việc chỉ định ..."
+# -> CHỨA SỐ HIỆU, phải bóc trước khi dùng làm chủ đề cho câu `situation`.
+_BOC_SH = re.compile(r"^.*?\d+[a-zA-Z]?/\d{4}/[A-ZĐ][A-ZĐ0-9\-]*\s*", re.S)
+_BOC_DAU = re.compile(r"^(?:quy định|hướng dẫn|ban hành|sửa đổi[^ ]*|về|việc)\s+",
+                      re.IGNORECASE)
+
+
+def chu_de_tu_norm(tieu_de: str | None) -> str | None:
+    """'Thông tư số 12/2016/TT-BTTTT Quy định về việc chỉ định phòng thử nghiệm…'
+    -> 'chỉ định phòng thử nghiệm…'. Dùng để phân biệt chủ đề mà KHÔNG lộ số hiệu.
+
+    Trả None nếu bóc xong vẫn còn số hiệu hoặc quá ngắn -> bỏ phần định hướng chủ đề.
+    """
+    if not tieu_de:
+        return None
+    s = _BOC_SH.sub("", tieu_de.strip()).strip(' "\'')
+    for _ in range(3):
+        s2 = _BOC_DAU.sub("", s).strip()
+        if s2 == s:
+            break
+        s = s2
+    if len(s) > 90:
+        s = s[:90].rsplit(" ", 1)[0]
+    # Cắt đuôi từ nối bị hụt sau khi truncate: "…của Chính phủ" -> "…của" đọc rất kỳ.
+    s = re.sub(r"\s+(?:của|và|về|cho|trong|theo|tại|đối với|thuộc)$", "", s).strip()
+    if len(s) < 12 or co_so_hieu(s):
+        return None
+    return s[:1].lower() + s[1:]
+
+
 # ── hash nội dung ───────────────────────────────────────────────────────────
 # Cùng cách chuẩn hoá với legal_rag/cdi/hashing.py để hai bên so được với nhau.
 _WS = re.compile(r"\s+")

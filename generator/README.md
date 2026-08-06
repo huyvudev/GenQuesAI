@@ -5,26 +5,66 @@ Sinh bộ đề từ đồ thị Neo4j + index Qdrant của `legal-rag`. Thiết
 
 ## Chạy
 
-Không cần cài gì thêm — dùng luôn venv của `legal-rag` (đã có `neo4j`, `qdrant_client`):
+Không cần cài gì thêm — dùng luôn venv của `legal-rag` (đã có `neo4j`, `qdrant_client`).
+Cần Neo4j (`:7687`) và Qdrant (`:6333`) đang chạy. **Không cần `ragas`.** Đường dẫn tới
+repo RAG đổi được bằng biến môi trường `LEGAL_RAG_ROOT`.
 
 ```bash
 cd D:/Project/GenQuesAI
-"D:/Project/Chatbot-Law/chatbot/.venv/Scripts/python.exe" -m generator.run_g1 \
-    --n 50 --pool 2500 --out out/g1.jsonl
+PY="D:/Project/Chatbot-Law/chatbot/.venv/Scripts/python.exe"
+
+$PY -m generator.run_all --paraphrase all --out out/eval_set.jsonl   # trọn 400 câu
+$PY -m generator.validate out/eval_set.jsonl                          # kiểm Mục 9
+
+$PY -m generator.run_all --chi G3,G5 --out out/mot_phan.jsonl         # vài nhóm
+$PY -m generator.run_g1 --n 50 --out out/g1.jsonl                     # một nhóm
 ```
 
-Cần Neo4j (`:7687`) và Qdrant (`:6333`) đang chạy. **Không cần LLM, không cần `ragas`** —
-G1 hoàn toàn deterministic. Đường dẫn tới repo RAG đổi được bằng biến môi trường
-`LEGAL_RAG_ROOT`.
+`--paraphrase` **opt-in** — nó gọi API trả tiền bằng key trong `.env` của `legal-rag`.
+Bỏ cờ này thì câu `situation` giữ bản template và cổng C2 ghi `chua_paraphrase`.
 
 ## Cấu trúc
 
 | File | Việc |
 |---|---|
-| `common.py` | `point_id` (bản chép + tự đối chiếu), chuẩn hoá số hiệu, hash, kết nối |
+| `common.py` | `point_id` (bản chép + tự đối chiếu), chuẩn hoá số hiệu, `chu_de_tu_norm`, hash, kết nối |
 | `gold.py` | Tìm gold span trong Qdrant, chấm điểm bằng chứng, cổng C1 |
-| `g1_replaces.py` | Chọn ca + dựng item cho nhóm G1 |
-| `run_g1.py` | CLI |
+| `paraphrase.py` | Tầng LLM duy nhất + cổng C2 |
+| `g1_replaces.py` `g2_temporal.py` `g3_chain.py` `g4_history.py` `g5_transition.py` `g6_conflict.py` `g7_content.py` `g8_unanswerable.py` | Tám nhóm |
+| `run_all.py` | Sinh trọn bộ + gộp |
+| `validate.py` | Kiểm theo tiêu chí nghiệm thu Mục 9 |
+
+## Kết quả trọn bộ (2026-08-06)
+
+```
+nhóm  quota  sinh  situation      tổng sinh        400
+G1       50    50          0      chờ review (G6)   25  ← chưa dùng được
+G2       80    80         48      sẵn sàng         375
+G3       60    60         36      situation        179
+G4       40    40         20        · 60% trong nhóm hỗ trợ cả hai dạng
+G5       30    30         21        · 45% trên toàn bộ
+G6       25    25          0
+G7       90    90         54      validate.py: ĐẠT toàn bộ tiêu chí
+G8       25    25          0      kiểm được bằng máy
+```
+
+**G1, G6, G8 không dựng được dạng `situation`** — G1 phải nêu số hiệu mới hỏi được
+"văn bản nào thay thế X"; G6 phải nêu cả hai văn bản; G8 hỏi về văn bản *không tồn
+tại* nên buộc phải nêu định danh. Đây là 100 câu, nên tiêu chí "≥55% toàn bộ" không
+đạt được về mặt cấu trúc — đã sửa thành "≥55% trong nhóm hỗ trợ cả hai dạng".
+
+**G6 ở trạng thái `cho_review`**, không tính vào bộ dùng được: điều kiện (3) §4.2 —
+hai quy định có *hệ quả pháp lý* khác nhau hay chỉ khác mức độ chi tiết — không tự
+động hoá đáng tin được. **G8 không có `gold_spans` là đúng thiết kế**: câu không có
+đáp án thì không có gì để trích dẫn.
+
+## Còn lại
+
+| Việc | Vì sao chưa làm |
+|---|---|
+| **C4 — ablation** | Cần chạy LLM không ngữ cảnh trên 400 câu |
+| **C5 — review mẫu 50–100 câu** | Cần người; đây là thứ chốt `eval_set_ceiling`, **không có nó thì mọi chỉ số chưa diễn giải được** |
+| **G6 duyệt 25 ca** | Điều kiện (3) §4.2 |
 
 ## Hai chốt chặn chạy trước khi sinh
 

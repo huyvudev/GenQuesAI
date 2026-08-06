@@ -599,7 +599,8 @@ Hàng cuối là phân biệt dễ bỏ sót: hai nhóm cùng đo "hành vi từ
 - [ ] `chunk_id` tính lại được từ `expr_id` bằng `uuid5(_NS, …)` — kiểm ngẫu nhiên 20 item;
 - [ ] 0 câu paraphrase vi phạm C2;
 - [ ] đủ 400 câu theo quota Mục 4, lệch mỗi nhóm ≤ 10%;
-- [ ] `situation` ≥ 55% toàn bộ; G2′/G7 mỗi nhóm ≥ 50%;
+- [ ] `situation` ≥ 55% **trong các nhóm hỗ trợ cả hai dạng**; G2′/G7 mỗi nhóm ≥ 50%;
+  > Sửa sau khi dựng (§10.7): **G1, G6, G8 — 100 câu — không dựng được dạng `situation`** vì bản chất câu hỏi. G1 phải nêu số hiệu mới hỏi được "văn bản nào thay thế X"; G6 phải nêu cả hai văn bản mới dựng được tình huống xung đột; G8 hỏi về văn bản/Điều *không tồn tại* nên buộc phải nêu định danh. Tiêu chí gốc "≥55% toàn bộ" đặt trước khi biết điều này và **không đạt được về mặt cấu trúc**. Báo cáo cả hai con số.
 - [ ] G2′ có đủ ba loại `as_of_kind`, mỗi loại ≥ 25%;
 - [ ] G4′ chỉ lấy `Action` có `loai IN ['SuaDoi','ThayThe','BaiBo']` — **0 câu dựng trên `CanCu`** — kèm `da_duyet = true` và `confidence >= 0.85`;
 - [ ] G5 chỉ lấy `TransitionRule` có `da_duyet = true` và `confidence >= 0.9` (thang riêng, không dùng chung ngưỡng với `Action`);
@@ -846,6 +847,46 @@ Bốn thứ phát sinh:
 - *Lỗ hổng thật:* `core_so_hieu()` chỉ khớp chữ HOA, mà dữ liệu có `nđ-cp` viết thường ⇒ dùng nó để canh rò rỉ thì lọt. Thêm `co_so_hieu()` không phân biệt hoa thường, chỉ dùng để **phát hiện**; `core_so_hieu()` giữ nguyên vai trò **trích chuẩn**.
 
 Điểm (d) đáng nhớ: cùng một regex mà dùng cho hai mục đích khác nhau — trích và canh — thì mục đích canh luôn cần lỏng hơn.
+
+### 10.7 — Trọn bộ 400 câu đã sinh (2026-08-06)
+
+Năm nhóm còn lại (G3 60 · G4′ 40 · G5 30 · G6 25 · G8 25) dựng xong. `generator/run_all.py` sinh cả 8 nhóm và gộp thành `out/eval_set.jsonl`; `generator/validate.py` kiểm theo Mục 9.
+
+```
+nhóm  quota  sinh  situation        tổng sinh        400
+G1       50    50          0        chờ review (G6)   25  ← chưa dùng được
+G2       80    80         48        sẵn sàng         375
+G3       60    60         36        situation        179
+G4       40    40         20          · 60% trong nhóm hỗ trợ cả hai dạng ✅
+G5       30    30         21          · 45% trên toàn bộ
+G6       25    25          0
+G7       90    90         54        validate.py: ĐẠT toàn bộ tiêu chí
+G8       25    25          0        kiểm được bằng máy
+```
+
+**Ba nhóm không dựng được dạng `situation`** — phát hiện có tính cấu trúc, đã sửa tiêu chí Mục 9. Xem giải thích ở đó.
+
+**G6 ra lò ở trạng thái `cho_review`, không tính vào bộ dùng được.** Điều kiện (3) §4.2 — "hai quy định có hệ quả pháp lý khác nhau" — không tự động hoá đáng tin được. Bộ sinh chỉ lo (1) *cùng còn hiệu lực* và (2) *cùng chủ đề cụ thể*, proxy bằng **hai Điều trùng tiêu đề ở hai văn bản khác cấp bậc**. Mỗi item mang sẵn `review_can_kiem` nêu đúng câu người duyệt phải trả lời.
+
+**G8 không có `gold_spans` là đúng thiết kế** — câu không có đáp án thì không có đoạn nào để trích dẫn. Đây là ngoại lệ duy nhất của tiêu chí "100% item có gold_spans", đã ghi thẳng vào `validate.py`.
+
+Bốn thứ phát sinh:
+
+**a. Tiêu đề văn bản chứa số hiệu — lỗi lặp lại lần thứ ba.** G3 và G4′ ban đầu sinh gần như 0 câu `situation` (9/60 và 0/40) vì tiêu đề văn bản dùng làm chủ đề luôn chứa số hiệu và bị chặn. Đây đúng là vấn đề đã gặp ở §10.6b nhưng lời giải khi đó nằm riêng trong module G2′. Đã chuyển `chu_de_tu_norm()` lên `common.py`. **Bài học: chỗ nào sửa một lỗi dữ liệu thì lời giải phải nằm ở tầng dùng chung ngay từ đầu**, nếu không nó sẽ tái xuất ở mọi nhóm sau.
+
+**b. `expr_id` không phải lúc nào cũng có point trong index.** G3 mất `gold_spans` ở 37/60 item vì query gom Expression của *mọi* Component, kể cả Khoản/Điểm — mà point Qdrant chỉ nằm ở **mức Điều**. Phải lọc `c.loai = 'Dieu'` khi chọn expr làm ngữ cảnh.
+
+**c. Một văn bản được ghi nhiều cách khác nhau.** G4′ gặp `19/2012/TTLT-BTC - BKH&ĐT-BTTTT`, `19/2012/TTLT-BTC-BKH&ĐT-BTTTT`, `19/2012/TTLT-BTC-BKHĐT-BTTTT` — **cùng một văn bản**, ba bản ghi. Giữ nguyên thì đáp án danh sách có bản trùng và **Set-F1 phạt hệ thống vì nó trả lời đúng một lần**. Gộp theo `số/năm` trước khi kiểm điều kiện "≥2 văn bản".
+
+**d. Tiêu chí "0 câu vi phạm C2" phát biểu sai.** C2 loại thì **giữ bản template**, item vẫn hợp lệ. Tiêu chí đúng là *"không bản viết lại vi phạm nào lọt vào bộ đề"* — kiểm trên `user_input` chứ không phải trên nhật ký cổng. Bản validator đầu tiên báo lỗi cho một item hoàn toàn hợp lệ.
+
+**Còn lại, đều cần thứ máy không làm được:**
+
+| Việc | Vì sao chưa làm |
+|---|---|
+| **C4 — ablation** | Cần chạy LLM không ngữ cảnh trên 400 câu; chưa chạy để khỏi tiêu quota ngoài dự tính |
+| **C5 — review mẫu 50–100 câu** | Cần người có chuyên môn; đây là thứ chốt `eval_set_ceiling` (Mục 1), **không có nó thì mọi chỉ số ở Mục 6 chưa diễn giải được** |
+| **G6 duyệt 25 ca** | Điều kiện (3) §4.2 |
 
 ---
 
