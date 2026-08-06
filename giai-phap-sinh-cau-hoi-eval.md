@@ -414,14 +414,50 @@ Lịch sử sửa đổi thật nằm ở tầng `Action` (§10.3c):
 
 **Đổi độ phân giải, phải nói rõ:** `AFFECTS` nối `Action → Norm`, tức **cấp văn bản**, không phải cấp Điều. Nên câu hỏi G4′ là *"văn bản X đã bị những văn bản nào sửa đổi/tác động?"* chứ không phải *"Điều 6 đã bị sửa mấy lần?"*. Cấu phần đo được vẫn là khả năng tổng hợp danh sách.
 
-**Bắt buộc lọc trước khi dùng làm đáp án đúng:**
+#### Bộ lọc bắt buộc — cả ba, theo đúng thứ tự này
 
-| Thuộc tính `Action` | Điều kiện | Vì sao |
+```cypher
+WHERE act.loai IN ['SuaDoi','ThayThe','BaiBo']   -- (1) LOẠI 'CanCu'
+  AND act.da_duyet = true                        -- (2)
+  AND act.confidence >= 0.85                     -- (3)
+```
+
+**(1) Loại `CanCu` — quan trọng nhất, và dễ bỏ sót nhất.**
+
+`CanCu` = *căn cứ pháp lý* ("Căn cứ Nghị định X, Bộ trưởng ban hành…"), **không phải sửa đổi**. Văn bản mới chỉ *viện dẫn* văn bản cũ chứ không tác động tới nó. Nhưng `CanCu` vẫn có cạnh `AFFECTS` như mọi loại khác:
+
+| `loai` | Tổng | Có `AFFECTS` | Đã duyệt |
+|---|---|---|---|
+| `SuaDoi` | 40.166 | 31.415 | 10.739 |
+| **`CanCu`** | **34.971** | **34.971** | **28.286** ⚠ |
+| `ThayThe` | 10.937 | 9.705 | 8.068 |
+| `BaiBo` | 4.269 | 3.208 | 21 |
+
+`CanCu` chiếm **28.286/48.213 ≈ 59%** kho đã duyệt. Không loại nó thì quá nửa đáp án G4′ sẽ liệt kê những văn bản **chỉ viện dẫn** chứ không hề sửa đổi — tức đáp án sai, mà lại sai một cách trông rất hợp lý. Đây đúng là loại lỗi mà bất biến I1 sinh ra để chặn: đồ thị có dữ liệu, dữ liệu đúng với nghĩa của nó, nhưng **không đúng với nghĩa của câu hỏi**.
+
+`BaiBo` gần như không dùng được (21/4.269 được duyệt) — cứ để trong bộ lọc, nó tự rơi ra.
+
+**(3) Ngưỡng `confidence = 0.85`** — chốt sau khi xem phân bố thật (§10.3h). Trong kho đã lọc theo (1)+(2) chỉ tồn tại **ba giá trị** confidence, nên đây thực chất là lựa chọn nhị phân:
+
+| Ngưỡng | Cạnh còn lại | Thành phần |
 |---|---|---|
-| `da_duyet` | `= true` | Chưa duyệt thì chưa phải sự thật, không được làm ground truth |
-| `confidence` | ≥ ngưỡng (chốt sau khi xem phân bố) | Đây là độ tin của bước trích xuất — dùng cạnh confidence thấp làm đáp án là vi phạm tinh thần I1 |
+| ≥ 0.90 | 14.422 | ThayThe 7.877 · SuaDoi 6.545 |
+| **≥ 0.85** ✅ | **18.874** | SuaDoi 10.805 · ThayThe 8.069 |
+| ≥ 0.75 | 18.895 | thêm 21 `BaiBo` |
 
-Hai bộ lọc này áp dụng chung cho **G5** (`TransitionRule` cũng có khái niệm "đã duyệt"). Chúng chính là hiện thân cụ thể của `eval_set_ceiling` ở Mục 1 — thay vì tin toàn bộ đồ thị, ta chỉ lấy phần đồ thị tự khai là đáng tin.
+Chọn **0.85** vì lên 0.90 sẽ cắt mất 4.260 cạnh `SuaDoi` và làm kho nghiêng về `ThayThe` — mà `ThayThe` chính là thứ **G1 đã đo rồi** (8.068 Action `ThayThe` đã duyệt ≈ 8.063 cạnh `REPLACES`: nhiều khả năng `REPLACES` được sinh ra từ đúng các Action này). Giữ 0.85 để `SuaDoi` chiếm đa số, G4′ mới hỏi được thứ G1 không hỏi.
+
+**Kho sau lọc:** 18.874 cạnh / 11.334 văn bản bị tác động, trong đó **3.857 văn bản bị tác động nhiều lần** (nhiều nhất 42 lần, trung bình 1,67). Cần 40 câu — dư sức.
+
+> **Ưu tiên chọn ca:** lấy từ 3.857 văn bản bị tác động **≥2 lần và có ít nhất một `SuaDoi`**. Ca chỉ có một `ThayThe` duy nhất thì trùng nội dung với G1, không thêm thông tin chẩn đoán.
+
+#### G5 dùng ngưỡng riêng
+
+`TransitionRule` có cùng hai trường `da_duyet` / `confidence` nhưng **thang điểm khác** — chạy tới 1.0 trong khi `Action` chặn ở 0.9, tức hai pipeline trích xuất khác nhau. **Không dùng chung một ngưỡng.**
+
+Toàn bộ 941 rule đều `da_duyet = true`; 730 ở mức 1.0 và 139 ở 0.9. Ngưỡng **≥ 0.9 → 870 rule**, cần 30 — dư.
+
+Ba bộ lọc này chính là hiện thân cụ thể của `eval_set_ceiling` ở Mục 1: thay vì tin toàn bộ đồ thị, ta chỉ lấy phần đồ thị **tự khai là đáng tin**, rồi vẫn đo lại bằng C5.
 
 ---
 
@@ -565,7 +601,9 @@ Hàng cuối là phân biệt dễ bỏ sót: hai nhóm cùng đo "hành vi từ
 - [ ] đủ 400 câu theo quota Mục 4, lệch mỗi nhóm ≤ 10%;
 - [ ] `situation` ≥ 55% toàn bộ; G2′/G7 mỗi nhóm ≥ 50%;
 - [ ] G2′ có đủ ba loại `as_of_kind`, mỗi loại ≥ 25%;
-- [ ] G4′/G5 chỉ lấy `Action`/`TransitionRule` có `da_duyet = true` và `confidence` ≥ ngưỡng (§4.5);
+- [ ] G4′ chỉ lấy `Action` có `loai IN ['SuaDoi','ThayThe','BaiBo']` — **0 câu dựng trên `CanCu`** — kèm `da_duyet = true` và `confidence >= 0.85`;
+- [ ] G5 chỉ lấy `TransitionRule` có `da_duyet = true` và `confidence >= 0.9` (thang riêng, không dùng chung ngưỡng với `Action`);
+- [ ] ≥ 70% câu G4′ lấy từ văn bản bị tác động ≥2 lần và có ít nhất một `SuaDoi` — tránh trùng nội dung với G1;
 - [ ] G6 và G8 human-verified 100%;
 - [ ] file JSONL đã freeze, đủ 3 trường version, đã commit.
 
@@ -716,6 +754,25 @@ Quan hệ/nhãn chưa từng nhắc trong thiết kế: `AFFECTS` 80.398 · `ENA
 
 **g. Rác dữ liệu cần loại khi lấy mẫu.** Phân bố `hieu_luc_den` theo năm có **14 bản ghi năm 3000** (giá trị sentinel). Năm 2027–2028 (80 bản ghi) là ngày hết hiệu lực định trước — hợp lệ, giữ. Bộ lọc: `hieu_luc_den.year <= 2030`.
 
+**h. Phân bố `confidence` — cơ sở chốt ngưỡng ở §4.5.**
+
+`Action` (90.343 node, tất cả đều có `confidence`): thang **rời rạc 9 mức**, `min 0.0 · max 0.9 · avg 0.556`. Không node nào đạt 1.0.
+
+| conf | 0.0 | 0.25 | 0.3 | 0.5 | 0.6 | 0.7 | 0.75 | 0.85 | 0.9 |
+|---|---|---|---|---|---|---|---|---|---|
+| n | 8.060 | 10.374 | 2.125 | 11.017 | 34.102 | 869 | 4.989 | 4.385 | 14.422 |
+
+`da_duyet` gần như là một ngưỡng confidence trá hình:
+
+| `da_duyet` | n | khoảng conf | avg |
+|---|---|---|---|
+| `true` | 47.114 | [0.6, 0.9] | 0.715 |
+| `false` | 43.229 | [0.0, 0.75] | 0.383 |
+
+`TransitionRule` (941 node) dùng **thang khác**, chạy tới 1.0: 730 ở 1.0 · 139 ở 0.9 · 62 ở 0.8 · phần còn lại rải rác. **Tất cả đều `da_duyet = true`.**
+
+⇒ Hai loại node có hai thang điểm khác nhau ⇒ **ngưỡng phải đặt riêng cho từng loại**, không dùng chung một hằng số.
+
 ---
 
 ## Phụ lục A — Template câu hỏi
@@ -741,6 +798,6 @@ Bản `lookup` là nguồn sự thật; bản `situation` là mục tiêu cho `p
 - Ngưỡng entailment cho C3, và mô hình dùng chạy C4, chưa chốt.
 - ~~Index có lưu offset ký tự không?~~ → **đã rõ:** Qdrant lưu `payload["text"]` = đúng chuỗi window, nên offset tính trực tiếp trên đó được. Xem §10.1 R3.
 - ~~§10.2(b) — `texts` có trộn phiên bản không?~~ → **đã chạy, bác bỏ.** Kết quả đầy đủ ở §10.3; script ở `checks/check-texts-mixing.cypher`.
-- **Ngưỡng `Action.confidence`** cho G4′/G5 chưa chốt — cần xem phân bố thực trước khi đặt (§4.5).
+- ~~Ngưỡng `Action.confidence` cho G4′/G5~~ → **đã chốt** sau khi xem phân bố (§10.3h): `Action ≥ 0.85`, `TransitionRule ≥ 0.9`, kèm bộ lọc loại trừ `CanCu` (§4.5).
 - `AFFECTS` ở cấp Norm nên G4′ mất độ phân giải cấp Điều. Nếu về sau cần câu hỏi "Điều nào bị sửa", phải bổ sung liên kết Action → Component ở tầng ingest.
 - Báo nhóm `legal-rag` hai việc: bug resume chỉ kiểm `part=0` (§10.2a) và `FETCH` duyệt trùng đường đi (§10.3d).
