@@ -89,12 +89,48 @@ G5 hỏi `"Theo {số hiệu}, …"` nên số hiệu vốn nằm sẵn trong c�
 **Giới hạn:** phép đo là từ vựng, không phân biệt "đúng" với "sai nhưng cùng chủ đề".
 Ở mức 1% thì đọc tay được; tỷ lệ tăng thì phải thay bằng LLM judge.
 
+## C5 — phiếu review cho người duyệt
+
+```bash
+$PY -m generator.run_c5 --n 80                      # dựng out/review_c5.html
+# mở file bằng trình duyệt, duyệt xong bấm "Xuất CSV"
+$PY -m generator.run_c5 --cham out/c5_ket_qua.csv   # -> eval_set_ceiling
+```
+
+C5 **không đo hệ RAG** — nó đo *chính bộ đề*. Đáp án sinh từ đồ thị chỉ đúng so với
+đồ thị, không phải so với luật; khâu trích xuất sai thì bộ đề mã hoá đúng lỗi đó rồi
+chấm sai một hệ trả lời đúng. Kết quả là `eval_set_ceiling` — **trần trên của mọi chỉ
+số ở Mục 6**.
+
+Phiếu là **một trang HTML tự chứa**: không backend, không mạng, mở bằng double-click.
+Phán quyết lưu localStorage, xuất CSV khi xong. Mỗi thẻ gồm câu hỏi, đáp án bộ đề coi
+là đúng, **link tới văn bản gốc**, đoạn trích dẫn (thu gọn), và ô **"Việc cần kiểm"**
+nêu đúng thứ phải đối chiếu cho nhóm đó — người duyệt không phải tự nghĩ ra.
+
+| Nhóm | Việc cần kiểm |
+|---|---|
+| G1 | `moi` có thật sự *thay thế* `cu`, hay chỉ *sửa đổi, bổ sung*? |
+| G2′ | Tại `as_of`, văn bản đang hiệu lực có đúng là văn bản ghi trong đáp án? |
+| G3 | Văn bản hướng dẫn còn hiệu lực hay đã hết? |
+| G4′ | Danh sách văn bản tác động có **đủ và đúng**? Thiếu hay thừa đều là sai |
+| G5 | Điều khoản chuyển tiếp có thật sự quy định như đáp án? |
+| G6 | **Điều kiện (3)**: hệ quả pháp lý khác nhau, hay chỉ khác mức độ chi tiết? |
+| G7 | Đoạn trích có đúng là nội dung Điều đó, và có trả lời được câu hỏi? |
+| G8 | Câu này có **thật sự** không có đáp án trong hệ thống văn bản? |
+
+Mẫu **chia đều các nhóm** (10 câu/nhóm ở cỡ 80) chứ không theo tỷ lệ quota, vì
+`eval_set_ceiling` đo **riêng từng nhóm**. Ở cỡ đó một câu sai kéo tỷ lệ xuống 10 điểm
+phần trăm — phiếu nói rõ đây là **phép sàng**, nhóm nào ra kết quả sát ngưỡng thì phải
+mở rộng mẫu. `--n 160` cho độ phân giải gấp đôi.
+
+**"Không chắc" tính là KHÔNG đạt** khi tổng hợp: trần trên phải là con số bảo thủ.
+
 ## Còn lại
 
-| Việc | Vì sao chưa làm |
+| Việc | |
 |---|---|
-| **C5 — review mẫu 50–100 câu** | Cần người; đây là thứ chốt `eval_set_ceiling`, **không có nó thì mọi chỉ số chưa diễn giải được** |
-| **G6 duyệt 25 ca** | Điều kiện (3) §4.2 |
+| **Chạy C5** | Phiếu đã sẵn sàng, cần người có chuyên môn ngồi duyệt |
+| **G6 duyệt 25 ca** | Nằm trong phiếu C5 |
 
 ## Hai chốt chặn chạy trước khi sinh
 

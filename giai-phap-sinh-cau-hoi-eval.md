@@ -911,12 +911,26 @@ Sau khi sửa: 10 leak → **2**. Đây là biểu hiện khác của cùng bài
 
 **Giới hạn của C4 ở đây:** phép đo là từ vựng, nên nó không phân biệt được "trả lời đúng" với "trả lời sai nhưng cùng chủ đề". Với tỷ lệ 1% thì đọc tay được; nếu về sau tỷ lệ tăng thì phải thay bằng LLM judge.
 
-**Còn lại, đều cần thứ máy không làm được:**
+### 10.9 — Phiếu review C5 đã sẵn sàng (2026-08-07)
 
-| Việc | Vì sao chưa làm |
+`generator/run_c5.py` dựng **một trang HTML tự chứa** (`out/review_c5.html`, 80 câu, 173 KB): không backend, không mạng, mở bằng double-click. Phán quyết lưu localStorage, xuất CSV khi xong; `run_c5.py --cham` đọc CSV và tính `eval_set_ceiling` **riêng từng nhóm**.
+
+Ba quyết định đáng nêu:
+
+**a. Mỗi nhóm có một câu hỏi kiểm riêng, viết ở dạng mệnh lệnh cụ thể.** "Kiểm tra xem có đúng không" thì mỗi người hiểu một kiểu; phiếu ghi thẳng *"`{moi}` có thật sự **thay thế** `{cu}` không? Chú ý phân biệt thay thế với sửa đổi, bổ sung"* — kèm link văn bản gốc lấy từ `Norm.nguon_url`. Người duyệt không phải tự nghĩ ra phải đối chiếu cái gì, và hai người duyệt cùng một thẻ thì kiểm cùng một thứ.
+
+**b. Mẫu chia ĐỀU các nhóm, không theo tỷ lệ quota.** `eval_set_ceiling` đo riêng từng nhóm (Mục 9) nên nhóm 25 câu cần đủ mẫu như nhóm 90 câu. Hệ quả phải nói thẳng trong phiếu: ở cỡ 80 thì mỗi nhóm 10 câu, **một câu sai kéo tỷ lệ xuống 10 điểm phần trăm** — không đủ độ phân giải để khẳng định "≥95%". Phiếu ghi rõ đây là **phép sàng**, nhóm nào ra kết quả sát ngưỡng thì phải mở rộng mẫu (`--n 160`).
+
+**c. "Không chắc" tính là KHÔNG đạt.** Trần trên phải là con số bảo thủ. Và phiếu nói rõ *"Không chắc là lựa chọn hợp lệ — đoán bừa làm hỏng chính con số cần đo"*, vì áp lực phải chọn đúng/sai sẽ biến C5 thành thứ vô nghĩa.
+
+Đã kiểm phiếu chạy thật trên trình duyệt, không chỉ kiểm file tồn tại: lưu và nạp lại trạng thái qua reload, đếm tiến độ, ghi chú, và CSV xuất ra đúng 81 dòng đúng định dạng. Script `--cham` chạy thử trên CSV giả lập cho ra đúng cảnh báo nhóm dưới ngưỡng.
+
+**Còn lại — cần người, không phải cần code:**
+
+| Việc | |
 |---|---|
-| **C5 — review mẫu 50–100 câu** | Cần người có chuyên môn; đây là thứ chốt `eval_set_ceiling` (Mục 1), **không có nó thì mọi chỉ số ở Mục 6 chưa diễn giải được** |
-| **G6 duyệt 25 ca** | Điều kiện (3) §4.2 |
+| **Chạy C5** | Phiếu sẵn sàng; cần người có chuyên môn pháp lý ngồi duyệt 80 câu |
+| **G6 duyệt 25 ca** | Nằm sẵn trong phiếu, kèm đúng câu hỏi về điều kiện (3) §4.2 |
 
 ---
 
