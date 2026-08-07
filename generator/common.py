@@ -33,6 +33,29 @@ LEGAL_RAG_ROOT = Path(os.environ.get("LEGAL_RAG_ROOT", r"D:\Project\Chatbot-Law\
 if str(LEGAL_RAG_ROOT) not in sys.path:
     sys.path.insert(0, str(LEGAL_RAG_ROOT))
 
+
+def nap_env() -> None:
+    """Đổ `.env` của legal-rag vào os.environ.
+
+    `Settings` bên đó đọc `.env` TƯƠNG ĐỐI theo cwd. Chạy từ repo này thì cwd khác nên
+    nó im lặng dùng giá trị mặc định — Neo4j sai mật khẩu, LLM thiếu api_key. Truyền
+    `_env_file` chỉ chữa được chỗ nào ta tự khởi tạo Settings; những chỗ dùng
+    `get_settings()` bên trong (agent/graph, embedder, reranker…) thì không với tới.
+    Đổ vào môi trường là cách duy nhất phủ hết. KHÔNG ghi đè biến đã có sẵn.
+    """
+    f = LEGAL_RAG_ROOT / ".env"
+    if not f.exists():
+        return
+    for dong in f.read_text(encoding="utf-8").splitlines():
+        dong = dong.strip()
+        if not dong or dong.startswith("#") or "=" not in dong:
+            continue
+        k, v = dong.split("=", 1)
+        os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+
+nap_env()
+
 # ── point_id ────────────────────────────────────────────────────────────────
 # Chép nguyên văn từ legal_rag/retrieval/index.py:16,38-42. KHÔNG import trực tiếp
 # vì module đó kéo theo embedder (torch/bge-m3) — nặng và không cần cho việc sinh đề.
