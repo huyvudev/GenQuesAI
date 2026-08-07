@@ -51,12 +51,20 @@ def do_chunk(res: dict, case: dict, k: int = 12) -> dict:
     recall = len(trung) / len(gold)
     precision = (len(trung) / len(topk)) if topk else 0.0
 
+    # Recall ở NHIỀU mức k. Khi đổi `rerank_top_k` của hệ, recall@k mới không so được
+    # với lần chạy trước; giữ thêm recall@12 để đối chiếu đúng cùng cửa sổ. Và nếu
+    # recall@30 tăng mà tỷ lệ đạt không tăng thì nút thắt đã dời sang ngân sách ngữ
+    # cảnh (`synth_context_budget_chars`), không còn ở truy hồi.
+    recall_tai = {kk: len(gold & set(lay[:kk])) / len(gold)
+                  for kk in (5, 12, 30) if kk <= max(len(lay), kk)}
+
     # Bẫy có xếp TRÊN gold không? -> "retriever nhầm", khác hẳn "retriever sót".
     hang_gold = next((i for i, c in enumerate(topk) if c in gold), None)
     hang_bay = next((i for i, c in enumerate(topk) if c in bay), None)
     bay_tren = (hang_bay is not None
                 and (hang_gold is None or hang_bay < hang_gold))
     return {"co_gold": True, "recall": recall, "precision": precision,
+            "recall_tai": recall_tai, "so_lay_ve": len(lay),
             "gold_trong_topk": bool(trung), "hang_gold": hang_gold,
             "bay_xep_tren_gold": bay_tren}
 
@@ -170,6 +178,16 @@ def in_bao_cao(bao: dict, rows: list[dict]) -> None:
               f" {(f'{rc*100:.0f}%' if rc is not None else '—'):>9}"
               f" {(f'{sum(hang)/len(hang):.1f}' if hang else '—'):>10}"
               f"   {', '.join(f'{k}={v}' for k, v in nn.most_common()) or '—'}")
+
+    cg = [r for r in ok if r.get("co_gold") and r.get("recall_tai")]
+    if cg:
+        print("\n── Recall theo cửa sổ k (để so giữa các lần đổi rerank_top_k) ──")
+        print(f"   số đoạn hệ trả về, trung bình: "
+              f"{sum(r['so_lay_ve'] for r in cg)/len(cg):.1f}")
+        for kk in (5, 12, 30):
+            v = [r["recall_tai"][kk] for r in cg if kk in r["recall_tai"]]
+            if v:
+                print(f"   recall@{kk:<3} {sum(v)/len(v)*100:5.0f}%   ({len(v)} ca)")
 
     print("\n── Triage (Mục 8): sai ở đâu → sửa gì ──")
     HANH_DONG = {

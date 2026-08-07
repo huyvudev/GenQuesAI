@@ -11,3 +11,4 @@ out/corpus/
 
 # Kết quả eval PHẢI được version: có bản gốc mới so hồi quy được khi chỉnh retrieval
 !out/ket_qua_eval.json
+!out/ket_qua_k30.json
