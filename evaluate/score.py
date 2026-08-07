@@ -1,10 +1,13 @@
-"""Chấm bộ đề: 4 chiều của `legal_rag.grader` + đo cấp chunk + triage (Mục 8).
+"""Chấm bộ đề: 4 chiều của `framework.grader` + đo cấp chunk + triage (Mục 8).
 
-    python -m evaluate.score --n 8              # thử 1 câu/nhóm
-    python -m evaluate.score                    # chạy hết
+    python -m evaluate.score --n 8                 # thử 1 câu/nhóm
+    python -m evaluate.score                       # chạy hết (chế độ 'cu')
+    python -m evaluate.score --che-do moi          # bật hộp đen + Set-F1
 
-Phần chấm nội dung dùng NGUYÊN `legal_rag.evaluation.grader.grade()` — không viết lại.
-Bổ sung ba thứ họ chưa có:
+Phần chấm nội dung dùng `framework.grader` — bản chép từ `legal_rag.evaluation.grader`
+(ROADMAP A3: framework phải chạy được trên máy KHÔNG có repo `Chatbot-Law`). Chế độ
+mặc định `cu` tái lập đúng ngữ nghĩa bản gốc, đã kiểm 0/375 lệch, nên các baseline đã
+commit vẫn so được. Bổ sung ba thứ bản gốc không có:
 
   · context_recall / precision ở CẤP CHUNK  (Mục 6: dùng metric không-LLM cho retrieval
     vì nó rẻ và KHÔNG TRÔI giữa các lần chạy — điều kiện để so delta có nghĩa)
@@ -90,11 +93,21 @@ def main() -> int:
     ap.add_argument("--n", type=int, help="giới hạn số câu MỖI NHÓM (để thử)")
     ap.add_argument("--out", default="out/ket_qua_eval.json")
     ap.add_argument("--k", type=int, default=12, help="top-k khi đo recall")
+    ap.add_argument("--che-do", dest="che_do", default="cu", choices=("cu", "moi"),
+                    help="'cu' = ngữ nghĩa grader gốc legal-rag (so được với baseline "
+                         "đã lưu); 'moi' = thêm hỗ trợ hộp đen + Set-F1")
     args = ap.parse_args()
 
-    from legal_rag.evaluation.grader import grade, aggregate
-    from legal_rag.evaluation.runner import _is_quota_error
+    # Grader của FRAMEWORK, không import từ legal-rag nữa: framework phải chạy được
+    # trên máy không có repo đó (ROADMAP A3). `che_do="cu"` tái lập đúng ngữ nghĩa
+    # grader gốc — đã kiểm 0/375 lệch — để loạt baseline đã commit vẫn so được.
+    # Đổi sang "moi" là hành động CÓ Ý THỨC và phải re-baseline.
+    from framework.grader import aggregate, grade as _grade, la_loi_quota as _is_quota_error
     from .ask_full import ask_full
+
+    def grade(res, ex):
+        return _grade(res, ex, che_do=args.che_do,
+                      set_f1_cho={"norms_include"} if args.che_do == "moi" else frozenset())
 
     cases = chuyen(Path(args.eval))
     if args.n:
