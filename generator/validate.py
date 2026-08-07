@@ -107,6 +107,24 @@ def kiem(path: Path) -> int:
     it_qua = [r["id"] for r in g4 if len(r["reference_fields"].get("danh_sach", [])) < 2]
     ok(not it_qua, "G4 mỗi câu ≥2 văn bản (câu hỏi danh sách)", str(it_qua[:5]))
 
+    print("\nC4 — kiểm cần thiết (§I4b):")
+    da_c4 = [r for r in rows if r["gates"].get("C4") not in (None, "not_run")]
+    if len(da_c4) < len(rows):
+        print(f"  [--- ] chưa chạy C4 trên {len(rows)-len(da_c4)} item "
+              f"— chạy `python -m generator.run_c4`")
+    else:
+        kiem = [r for r in rows if r["gates"]["C4"] in ("pass", "leak")]
+        leak = [r for r in kiem if r["gates"]["C4"] == "leak"]
+        ty = 100.0 * len(leak) / max(len(kiem), 1)
+        ok(ty <= 10, "tỷ lệ leak ≤10% (bộ đề thật sự cần retrieval)",
+           f"{len(leak)}/{len(kiem)} = {ty:.0f}%")
+        tu_choi = sum(1 for r in kiem if r.get("c4_diem") == 0)
+        print(f"       ({tu_choi}/{len(kiem)} = "
+              f"{100.0*tu_choi/max(len(kiem),1):.0f}% mô hình từ chối hoàn toàn)")
+        lech = [r["id"] for r in kiem
+                if (r["gates"]["C4"] == "leak") == bool(r.get("do_retrieval", True))]
+        ok(not lech, "leak đã hạ nhóm (do_retrieval=false)", str(lech[:5]))
+
     print("\nReview tay:")
     g6 = [r for r in rows if r["group"] == "G6"]
     ok(all(r.get("status") == "cho_review" for r in g6),
@@ -126,7 +144,7 @@ def kiem(path: Path) -> int:
             print(f"  · {x}")
         return 1
     print("ĐẠT toàn bộ tiêu chí kiểm được bằng máy.")
-    print("Còn lại cần người: C4 (ablation, cần LLM) và C5 (review mẫu).")
+    print("Còn lại cần người: C5 (review mẫu) và duyệt 25 ca G6.")
     return 0
 
 

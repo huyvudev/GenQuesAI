@@ -58,11 +58,41 @@ hai quy định có *hệ quả pháp lý* khác nhau hay chỉ khác mức đ�
 động hoá đáng tin được. **G8 không có `gold_spans` là đúng thiết kế**: câu không có
 đáp án thì không có gì để trích dẫn.
 
+## C4 — kiểm cần thiết
+
+```bash
+$PY -m generator.run_c4 out/eval_set.jsonl     # ~350 lời gọi, ghi ngược vào file
+```
+
+Hỏi lại từng câu **không kèm ngữ cảnh**; mô hình vẫn trả lời đúng ⇒ câu đó không đo
+retrieval ⇒ hạ nhóm (`do_retrieval = false`), **không xoá**. Bỏ qua G6/G8 vì mục tiêu
+của hai nhóm đó vốn *là* từ chối.
+
+```
+nhóm  kiểm pass leak          đã kiểm 350 | pass 348 | leak 2
+G1      50   50    0
+G2      80   80    0          mô hình TỪ CHỐI HOÀN TOÀN: 318/350 = 91%
+G3      60   60    0          trung vị điểm C4 = 0.0 · p90 = 0.0
+G4      40   40    0
+G5      30   29    1
+G7      90   89    1
+```
+
+**Nguyên tắc chấm:** chỉ tính phần mô hình **tự bổ sung** — trừ hết những gì câu hỏi
+đã cho sẵn. Định danh chỉ tính khi *không* có trong câu hỏi; nội dung so F1 token sau
+khi loại token của câu hỏi khỏi cả hai vế.
+
+Bản grader đầu tiên thiếu chỗ này nên báo 10 leak, trong đó cả 6 ca G5 đều điểm 1.0 —
+G5 hỏi `"Theo {số hiệu}, …"` nên số hiệu vốn nằm sẵn trong câu hỏi. Sửa xong còn 2, và
+đọc tay thì cả 2 chỉ trùng từ vựng chứ trả lời sai sự thật.
+
+**Giới hạn:** phép đo là từ vựng, không phân biệt "đúng" với "sai nhưng cùng chủ đề".
+Ở mức 1% thì đọc tay được; tỷ lệ tăng thì phải thay bằng LLM judge.
+
 ## Còn lại
 
 | Việc | Vì sao chưa làm |
 |---|---|
-| **C4 — ablation** | Cần chạy LLM không ngữ cảnh trên 400 câu |
 | **C5 — review mẫu 50–100 câu** | Cần người; đây là thứ chốt `eval_set_ceiling`, **không có nó thì mọi chỉ số chưa diễn giải được** |
 | **G6 duyệt 25 ca** | Điều kiện (3) §4.2 |
 

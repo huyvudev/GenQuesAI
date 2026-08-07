@@ -880,11 +880,41 @@ Bốn thứ phát sinh:
 
 **d. Tiêu chí "0 câu vi phạm C2" phát biểu sai.** C2 loại thì **giữ bản template**, item vẫn hợp lệ. Tiêu chí đúng là *"không bản viết lại vi phạm nào lọt vào bộ đề"* — kiểm trên `user_input` chứ không phải trên nhật ký cổng. Bản validator đầu tiên báo lỗi cho một item hoàn toàn hợp lệ.
 
+### 10.8 — C4 đã chạy (2026-08-07)
+
+Hỏi lại 350 câu (trừ G6/G8 — mục tiêu của hai nhóm đó vốn *là* từ chối) **không kèm ngữ cảnh**. Code `generator/gate_c4.py`, chạy bằng `run_c4.py`.
+
+```
+nhóm   kiểm  pass  leak   leak%          đã kiểm 350
+G1       50    50     0      0%          pass     348
+G2       80    80     0      0%          leak       2   → hạ nhóm, không xoá
+G3       60    60     0      0%          lỗi API    0
+G4       40    40     0      0%
+G5       30    29     1      3%          mô hình TỪ CHỐI HOÀN TOÀN
+G7       90    89     1      1%          318/350 = 91%
+```
+
+**Bộ đề thật sự cần retrieval.** Trung vị điểm C4 = 0.0, p90 = 0.0. Nghĩa là với đại đa số câu hỏi, mô hình không có gì để nói khi không được đưa tài liệu — đúng điều kiện để `context_recall` có ý nghĩa.
+
+**Grader bản đầu sai hệ thống, đáng ghi lại.** Nó báo 10 leak, trong đó **cả 6 ca G5 đều điểm đúng 1.0** — vì nó khớp `so_hieu`, mà số hiệu **đã nằm sẵn trong câu hỏi** (`"Theo {sh}, …"`). Thấy lại thứ mình vừa đưa cho mô hình không chứng minh điều gì. Kiểm tay xác nhận: G5-0027 mô hình dẫn "Điều 18" trong khi thật là Điều 218 — nó *không* biết.
+
+Nguyên tắc sửa, áp cho cả hai loại đáp án: **chỉ tính phần mô hình tự bổ sung, trừ hết những gì câu hỏi đã cho sẵn.**
+
+| | Trước | Sau |
+|---|---|---|
+| Định danh (`field`/`composed`) | khớp bất kỳ số hiệu nào | chỉ khớp định danh **không có trong câu hỏi** |
+| Nội dung (`span`) | F1 token thô | F1 sau khi **loại token của câu hỏi** khỏi cả hai vế |
+
+Sau khi sửa: 10 leak → **2**. Đây là biểu hiện khác của cùng bài học ở §10.6d — *một phép đo dùng cho hai vai thì vai "canh" phải chặt hơn*; ở đây là **thước đo không được tính điểm cho thông tin do chính đề bài cung cấp**.
+
+**Hai leak còn lại, kiểm tay, đều là ảo giác từ vựng.** G7-0005: mô hình trả lời "30 ngày / 45 ngày" theo Luật Khiếu nại 2011 trong khi đáp án là "15 ngày lần đầu, 30 ngày lần hai" của một luật khác — trùng từ, sai sự thật. Giữ nguyên nhãn `leak` (bảo thủ, chỉ hạ nhóm chứ không xoá) thay vì sửa tay, nhưng **thực chất bộ đề có 0 ca rò rỉ được xác nhận**.
+
+**Giới hạn của C4 ở đây:** phép đo là từ vựng, nên nó không phân biệt được "trả lời đúng" với "trả lời sai nhưng cùng chủ đề". Với tỷ lệ 1% thì đọc tay được; nếu về sau tỷ lệ tăng thì phải thay bằng LLM judge.
+
 **Còn lại, đều cần thứ máy không làm được:**
 
 | Việc | Vì sao chưa làm |
 |---|---|
-| **C4 — ablation** | Cần chạy LLM không ngữ cảnh trên 400 câu; chưa chạy để khỏi tiêu quota ngoài dự tính |
 | **C5 — review mẫu 50–100 câu** | Cần người có chuyên môn; đây là thứ chốt `eval_set_ceiling` (Mục 1), **không có nó thì mọi chỉ số ở Mục 6 chưa diễn giải được** |
 | **G6 duyệt 25 ca** | Điều kiện (3) §4.2 |
 
