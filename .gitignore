@@ -1,3 +1,7 @@
 out/
 __pycache__/
 *.pyc
+
+# Bộ đề đã freeze PHẢI được version (Mục 9): không có bản đóng băng thì các lần
+# chỉnh retrieval không so hồi quy được với nhau. Các file trung gian vẫn bỏ qua.
+!out/eval_set.jsonl
