@@ -30,13 +30,33 @@ RETURN collect(DISTINCT d.so_thu_tu) AS ds
 """
 TON_TAI = "MATCH (n:Norm) WHERE n.so_hieu CONTAINS $sh RETURN count(n) AS c"
 
-# (d) ngoài phạm vi đã nạp — chủ đề chắc chắn không có trong corpus luật VN
+# (d) ngoài phạm vi đã nạp — chủ đề chắc chắn không có trong corpus luật VN.
+#
+# Danh sách này là TRẦN CỨNG cho số câu công thức (d): mỗi chủ đề chỉ dùng được MỘT
+# lần. Bản đầu có 5 chủ đề trong khi quota (d) ở n=25 là 7, và vòng lặp quay vòng
+# `NGOAI_PHAM_VI[quota["d"] % len(...)]` -> sinh ra 2 câu TRÙNG NGUYÊN VĂN
+# (G8-0003 ≡ G8-0020, G8-0004 ≡ G8-0024). Bộ đề tính 25 câu G8 nhưng chỉ có 23 câu
+# phân biệt, 2 câu bị đếm hai lần khi chấm chiều `behavior`.
+#
+# Nay: đủ dài cho quota lớn hơn nhiều, và `build()` KHÔNG còn quay vòng — hết chủ đề
+# thì (d) đóng lại và nhường chỗ cho a/b/c, chứ không lặp lại.
 NGOAI_PHAM_VI = [
     "quy định của Liên minh châu Âu về nhãn sinh thái cho đồ chơi trẻ em",
     "luật liên bang Hoa Kỳ về đăng ký nhãn hiệu âm thanh",
     "quy chuẩn của Nhật Bản về kiểm định thang máy dân dụng",
     "công ước quốc tế về khai thác khoáng sản trên Mặt Trăng",
     "luật bang California về quyền riêng tư dữ liệu sinh trắc học",
+    "chỉ thị của Liên minh châu Âu về hộ chiếu vắc-xin cho vật nuôi",
+    "luật liên bang Đức về trách nhiệm dân sự của robot tự hành",
+    "quy định của Anh về cấp phép khai thác năng lượng sóng biển",
+    "công ước Nam Cực về bảo tồn loài nhuyễn thể",
+    "luật bang Queensland về đăng kiểm tàu lượn siêu tốc",
+    "quy chuẩn của Hàn Quốc về ghi nhãn dinh dưỡng thức ăn cho cá cảnh",
+    "hiệp định ASEAN về công nhận lẫn nhau chứng chỉ lặn biển giải trí",
+    "quy định của Thuỵ Sĩ về lưu ký vàng trong hầm dân sự",
+    "luật liên bang Canada về bản quyền tiếng kêu động vật hoang dã",
+    "quy chuẩn của Na Uy về an toàn trang trại cá hồi ngoài khơi",
+    "công ước quốc tế về phân bổ quỹ đạo vệ tinh siêu nhỏ",
 ]
 
 
@@ -78,9 +98,21 @@ def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], di
     rng.shuffle(mau)
 
     items: list[Item] = []
-    stat = {"mau": len(mau), "a": 0, "b": 0, "c": 0, "d": 0, "bo_vi_trung_that": 0}
+    stat = {"mau": len(mau), "a": 0, "b": 0, "c": 0, "d": 0, "bo_vi_trung_that": 0,
+            "bo_vi_trung_cau": 0}
     quota = {"a": 0, "b": 0, "c": 0, "d": 0}
     can = {"a": n // 4, "b": n // 4, "c": n // 4, "d": n - 3 * (n // 4)}
+
+    # (d) không tái sử dụng chủ đề -> trần cứng là số chủ đề có sẵn. Phần dư chuyển
+    # cho a/b/c thay vì lặp lại chủ đề: một câu trùng làm lệch trọng số khi chấm,
+    # còn thiếu một câu thì `run_all` báo "← THIẾU" và người ta thấy ngay.
+    if can["d"] > len(NGOAI_PHAM_VI):
+        du = can["d"] - len(NGOAI_PHAM_VI)
+        can["d"] = len(NGOAI_PHAM_VI)
+        for i, k in enumerate(("a", "b", "c")):
+            can[k] += du // 3 + (1 if i < du % 3 else 0)
+
+    da_hoi: set[str] = set()          # chặn trùng ở MỌI công thức, không riêng (d)
 
     for r in mau:
         if len(items) >= n:
@@ -88,9 +120,13 @@ def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], di
         sh = core_so_hieu(r["so_hieu"])
         if not sh:
             continue
-        ct = min(("a", "b", "c", "d"), key=lambda k: quota[k] / max(can[k], 1))
-        if quota[ct] >= can[ct]:
-            continue
+        # Chỉ xét công thức còn chỗ. Bản cũ chọn công thức ít đầy nhất rồi `continue`
+        # nếu nó đã đầy — nghĩa là khi một công thức cạn, mọi dòng còn lại đều bị bỏ
+        # và các công thức khác không bao giờ lấp được phần thiếu.
+        con_cho = [k for k in ("a", "b", "c", "d") if quota[k] < can[k]]
+        if not con_cho:
+            break
+        ct = min(con_cho, key=lambda k: quota[k] / max(can[k], 1))
 
         it = None
         if ct == "a":
@@ -128,11 +164,21 @@ def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], di
                       reference_fields={"so_hieu": sh, "nam_hoi": truoc,
                                         "nam_ban_hanh": nam})
         else:
-            cd = NGOAI_PHAM_VI[quota["d"] % len(NGOAI_PHAM_VI)]
+            # KHÔNG quay vòng: `can["d"]` đã bị chặn ở `len(NGOAI_PHAM_VI)` phía trên
+            # nên chỉ số luôn hợp lệ, và mỗi chủ đề chỉ dùng đúng một lần.
+            cd = NGOAI_PHAM_VI[quota["d"]]
             it = Item(id="", cong_thuc="d", persona="luat_su",
                       question_template="{chu_de} hiện nay thế nào?",
                       user_input=f"{cd} hiện nay quy định thế nào?",
                       reference_fields={"chu_de_ngoai_pham_vi": cd})
+
+        # Lưới cuối: hai câu hỏi giống hệt nhau là hai lần chấm cùng một thứ. Công
+        # thức (a) bịa số ngẫu nhiên nên vẫn có thể va nhau; (b)/(c) có thể trùng nếu
+        # cùng một văn bản lọt vào mẫu hai lần.
+        if it.user_input in da_hoi:
+            stat["bo_vi_trung_cau"] += 1
+            continue
+        da_hoi.add(it.user_input)
 
         it.id = f"G8-{len(items):04d}"
         it.question_pre_paraphrase = it.user_input

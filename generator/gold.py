@@ -8,8 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, asdict
 
-from qdrant_client import models as qm
-
 from .common import content_hash, point_id
 
 
@@ -29,7 +27,11 @@ class GoldSpan:
         return d
 
 
-def _norm_filter(norm_id: str) -> qm.Filter:
+def _norm_filter(norm_id: str):
+    # Import TRỄ: `qdrant_client` chỉ cần khi thật sự quét index. Để ở tầng module thì
+    # `import generator.g7_content` cũng kéo theo nó, và bộ test không đụng gì tới
+    # Qdrant vẫn không chạy được trên máy chưa cài — đúng thứ ROADMAP A3 đang gỡ.
+    from qdrant_client import models as qm
     return qm.Filter(must=[qm.FieldCondition(key="norm_id",
                                              match=qm.MatchValue(value=norm_id))])
 

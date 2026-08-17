@@ -59,10 +59,14 @@ WHERE d.loai = 'Dieu'
   AND NONE(k IN $loai_tru WHERE toLower(d.tieu_de) CONTAINS k)
 // anh em gần (§5.3). order_key đánh số trên MỌI Component (gồm Khoản/Điểm) nên hai
 // Điều liền nhau cách xa về order_key -> lọc theo so_thu_tu mới đúng "liền kề".
+// `ORDER BY ex` trước `collect` là BẮT BUỘC: không có nó thì "hai anh em đầu tiên"
+// là hai hàng bất kỳ Neo4j trả về, và bẫy đổi giữa hai lần sinh.
 CALL (n, d) {
   MATCH (n)-[:HAS_PART*]->(k:Component)-[:HAS_VERSION]->(ke:Expression)
   WHERE k.loai = 'Dieu' AND k.comp_id <> d.comp_id AND ke.hieu_luc_den IS NULL
-  RETURN collect(DISTINCT ke.expr_id)[0..2] AS ke_expr
+  WITH DISTINCT ke.expr_id AS ex
+  ORDER BY ex
+  RETURN collect(ex)[0..2] AS ke_expr
 }
 // Bẫy cross-norm (cùng số Điều, văn bản khác) KHÔNG tính ở đây: nó quét toàn đồ thị
 // cho MỖI ứng viên -> query treo. Tính riêng bằng BAY_KHAC_VB, chỉ cho item đã chọn.
@@ -71,7 +75,10 @@ RETURN n.norm_id AS norm_id, n.so_hieu AS so_hieu, n.tieu_de AS norm_tieu_de,
        d.comp_id AS comp_id, d.so_thu_tu AS stt, d.tieu_de AS dieu_tieu_de,
        d.duong_dan AS duong_dan, e.expr_id AS expr_id,
        ke_expr AS anh_em
-ORDER BY n.ngay_hieu_luc DESC
+// Khoá phụ `expr_id` là bắt buộc, không phải làm cho đẹp: hàng nghìn văn bản dùng
+// chung một `ngay_hieu_luc`, nên chỉ ORDER BY ngày thì `LIMIT $pool` cắt vào giữa
+// một khối bằng điểm và TẬP ứng viên đổi giữa hai lần chạy.
+ORDER BY n.ngay_hieu_luc DESC, e.expr_id
 LIMIT $pool
 """
 
@@ -103,7 +110,7 @@ BAY_KHAC_VB = """
 MATCH (n2:Norm)-[:HAS_PART]->(k2:Component)-[:HAS_VERSION]->(e2:Expression)
 WHERE n2.linh_vuc = $linh_vuc AND n2.norm_id <> $norm_id
   AND k2.loai = 'Dieu' AND k2.so_thu_tu = $stt AND e2.hieu_luc_den IS NULL
-RETURN e2.expr_id AS ex LIMIT 2
+RETURN DISTINCT e2.expr_id AS ex ORDER BY ex LIMIT 2
 """
 
 
@@ -137,6 +144,15 @@ def build(neo, store, n: int = 90, pool: int = 4000, ty_le_situation: float = 0.
           seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
     rows = neo.run(SELECT, pool=pool, loai_tru=LOAI_TRU)
+
+    # SẮP CHUẨN trước khi trộn. `shuffle` cho hoán vị phụ thuộc thứ tự ĐẦU VÀO, nên
+    # nếu nguồn trả về thứ tự khác thì cùng seed vẫn ra bộ câu khác. Đo thật trên hai
+    # lần chạy cùng tham số: 87/90 câu lệch (dạng câu, persona, khuôn, bẫy).
+    #
+    # Sắp ở đây thay vì chỉ dựa vào ORDER BY của Cypher, vì A1 sẽ thay Cypher bằng
+    # duyệt `Corpus` — thứ tự duyệt cây KHÔNG có lý do gì trùng thứ tự Neo4j. Khoá
+    # chuẩn hoá ở tầng Python là thứ duy nhất sống sót qua cuộc đổi đó.
+    rows = sorted(rows, key=lambda r: str(r["expr_id"]))
     rng.shuffle(rows)
 
     items: list[Item] = []
