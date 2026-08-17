@@ -58,6 +58,39 @@ hai quy định có *hệ quả pháp lý* khác nhau hay chỉ khác mức đ�
 động hoá đáng tin được. **G8 không có `gold_spans` là đúng thiết kế**: câu không có
 đáp án thì không có gì để trích dẫn.
 
+## Soi bộ đề — xem bộ sinh vừa đẻ ra cái gì
+
+```bash
+$PY -m generator.soi_bo_de                      # -> out/soi_bo_de.html
+$PY -m generator.soi_bo_de --vao out/g7.jsonl --ra out/g7.html
+```
+
+Một trang HTML tự chứa, double-click là mở. Lọc theo nhóm (chọn nhiều được) · dạng
+`lookup`/`situation` · mã cảnh báo; tìm trong câu hỏi/đáp án/id; `j`/`k` hoặc phím mũi
+tên để đi giữa các câu. Mỗi câu hiện đủ: câu hỏi (kèm bản trước paraphrase), đáp án,
+bẫy, gold span với offset và hash, trạng thái năm cổng, điểm C4, JSON thô.
+
+**Đừng lẫn với `run_c5`.** C5 là phiếu cho người có chuyên môn *luật* phán đáp án
+đúng/sai để chốt `eval_set_ceiling` — mẫu nhỏ, có phán quyết, xuất CSV. Bộ soi là cho
+người làm *kỹ thuật* nhìn toàn bộ, không phán quyết gì.
+
+Cảnh báo tự động — mỗi luật là một lỗi **đã xảy ra thật**, và cố ý bắt những thứ mà
+C1–C5 không bắt được vì từng câu vẫn tự nhất quán:
+
+| | |
+|---|---|
+| `câu trùng` | có câu khác hỏi y hệt — chấm hai lần cùng một thứ |
+| `situation lộ số hiệu` | dạng `situation` phải giấu định danh (§5.2) |
+| `thiếu gold span` | không có đoạn trích thì `context_recall` không đo được gì |
+| `C1 không pass` | lỗi pipeline (§2), phải điều tra chứ không loại câu |
+| `C4 leak` | mô hình trả lời đúng khi không có ngữ cảnh ⇒ câu không đo retrieval |
+| `bằng chứng yếu` | `evidence_score < 5`: có từ khoá nhưng không phải câu dẫn |
+| `không có bẫy` | G1/G2/G7 thiếu distractor ⇒ mất phân biệt `retriever_nham`/`_sot` |
+| `chờ review` | G6, điều kiện (3) §4.2 |
+
+Chạy trên bộ đề hiện tại: **46/400 câu có cảnh báo**. Bốn câu `câu trùng` là hai cặp
+G8 đã biết (bộ sinh đã sửa, bộ đề chưa sinh lại).
+
 ## C4 — kiểm cần thiết
 
 ```bash
