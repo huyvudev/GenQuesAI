@@ -53,8 +53,17 @@ lại thành duyệt cây trên `Corpus.comp_theo_norm`. Không khó về thuậ
 lặng lẽ**: bản Cypher đang trả về cả tổ tiên lẫn hậu duệ ở vài chỗ, và chính nó từng gây
 lỗi duyệt trùng đường đi (§10.3d).
 
-**Cách kiểm:** sinh lại bộ 400 câu qua đường mới, so với `out/eval_set.jsonl` đã freeze.
-Khác nhau ở đâu thì phải giải thích được ở đó.
+**Cách kiểm:** bộ golden ở `tests/` — xem `tests/README.md`. Chạy `pytest`.
+
+> Kế hoạch ban đầu ("sinh lại rồi so với bản freeze") **không đủ**, và đo được: G1/G2
+> khớp từng chữ giữa hai lần chạy độc lập, nhưng **G7 lệch 87/90 câu** — vì
+> `BAY_KHAC_VB` là `LIMIT 2` không `ORDER BY`, và dạng câu gán theo vị trí vòng lặp.
+> Ở G7 phép diff đó đỏ sẵn **trước khi A1 bắt đầu**. Nên bộ golden tách *bộ sinh chọn
+> câu nào* (được phép đổi) khỏi *đồ thị nói sự thật gì* (không được đổi), và replay
+> 1.531 sự kiện chưng cất từ bộ đề đã freeze.
+
+Nền cho A1 đã có: `framework/truy_van.py` dịch một lần ngữ nghĩa Cypher
+(`HAS_PART*` vs `HAS_PART`, loại `CAN_CU`, khoảng nửa mở `[tu, den)`), 29 test phủ.
 
 ---
 

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genquesai"
+version = "0.1.0"
+description = "Sinh bộ đề eval và chấm hệ RAG pháp luật từ cây văn bản QPPL"
+requires-python = ">=3.12"
+dependencies = []
+
+# `framework` chạy được trên máy TRẮNG — không Neo4j, không Qdrant, không legal-rag
+# (ROADMAP A3). Đường JSONL + tầng truy vấn + tầng chấm đều thuần stdlib. Chỉ khi nạp
+# thẳng từ đồ thị mới cần nhóm phụ thuộc dưới đây.
+[project.optional-dependencies]
+neo4j = ["neo4j>=5", "qdrant-client>=1.7"]
+dev = ["pytest>=8"]
+
+[tool.setuptools]
+packages = ["framework", "generator", "evaluate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import mode `importlib` + rootdir trên sys.path: `tests/` có `__init__.py` nên các
+# module trong đó import lẫn nhau bằng `tests.x` được.
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning"]

@@ -13,3 +13,10 @@ out/corpus/
 !out/ket_qua_eval.json
 !out/ket_qua_k30.json
 !out/ket_qua_k30_budget40k.json
+
+# tests/golden/ KHÔNG bỏ qua — cả hai file đều là hợp đồng, không phải dữ liệu tạm:
+#   ky_vong.jsonl  chưng cất từ bộ đề đã freeze; không commit thì mỗi máy tự sinh một
+#                  bản và không còn cái chung nào để so
+#   fixture/       corpus để replay offline; không commit thì chỉ máy CÓ Neo4j mới
+#                  chạy được golden — đúng thứ ROADMAP A3 vừa gỡ bỏ
+.pytest_cache/
