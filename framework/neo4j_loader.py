@@ -24,7 +24,7 @@ from datetime import date
 from typing import Iterator
 
 from .schema import (Component, CorpusMeta, DieuKhoanChuyenTiep, Expression,
-                     LoaiQuanHe, Norm, QuanHe, _ngay)
+                     LoaiQuanHe, NguonQuanHe, Norm, QuanHe, _ngay)
 
 Q_NORM = """
 MATCH (n:Norm) RETURN n.norm_id AS id, n.so_hieu AS so_hieu, n.loai_vb AS loai_vb,
@@ -144,18 +144,23 @@ class Neo4jLoader:
         return self._cg
 
     def quan_he(self) -> Iterator[QuanHe]:
+        # `nguon` khai THẲNG ở đây vì chỉ chỗ này biết. Cạnh REPLACES/GUIDED_BY là dữ
+        # liệu đã biên tập; Action là bản trích bằng LLM. Hai đường cùng ra
+        # `LoaiQuanHe.THAY_THE`, và G1 chỉ dùng đường thứ nhất còn G4′ chỉ dùng đường
+        # thứ hai — mất phân biệt này thì hai nhóm lấy nhầm tập của nhau.
         for q, loai in ((Q_TT, LoaiQuanHe.THAY_THE), (Q_HD, LoaiQuanHe.HUONG_DAN)):
             for r in self.neo.stream(q):
                 if self._giu(str(r["tu"])) and self._giu(str(r["den"])):
                     yield QuanHe(loai=loai, tu_norm_id=str(r["tu"]),
-                                 den_norm_id=str(r["den"]), da_duyet=True)
+                                 den_norm_id=str(r["den"]), da_duyet=True,
+                                 nguon=NguonQuanHe.CANH)
         for r in self.neo.stream(Q_ACT):
             loai = LOAI_ACTION.get(r["loai"])
             if not loai or not (self._giu(str(r["tu"])) and self._giu(str(r["den"]))):
                 continue
             yield QuanHe(loai=loai, tu_norm_id=str(r["tu"]), den_norm_id=str(r["den"]),
                          ngay_hieu_luc=_ngay(r["ngay"]), do_tin=r["do_tin"],
-                         da_duyet=bool(r["duyet"]))
+                         da_duyet=bool(r["duyet"]), nguon=NguonQuanHe.TU_DONG)
 
     def chuyen_tiep(self) -> Iterator[DieuKhoanChuyenTiep]:
         for r in self.neo.stream(Q_CT):

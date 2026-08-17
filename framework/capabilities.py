@@ -9,7 +9,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .schema import Corpus, LoaiQuanHe
+from .schema import Corpus, LoaiQuanHe, NguonQuanHe
+from .truy_van import nguon_cua
 
 QUOTA = {"G1": 50, "G2": 80, "G3": 60, "G4": 40, "G5": 30, "G6": 25, "G7": 90, "G8": 25}
 TEN = {"G1": "thay thế văn bản", "G2": "tại một thời điểm",
@@ -42,10 +43,19 @@ class NangLuc:
         return min(self.quota, self.ung_vien // HE_SO)
 
 
-def _co_quan_he(c: Corpus, loai: set[LoaiQuanHe], loc_duyet: bool) -> list:
+def _co_quan_he(c: Corpus, loai: set[LoaiQuanHe], loc_duyet: bool,
+                nguon: NguonQuanHe | None = None) -> list:
+    """Đếm ứng viên ĐÚNG NHƯ bộ sinh sẽ lọc — kể cả lọc theo nguồn.
+
+    `nguon` bắt buộc phải khớp với bộ sinh tương ứng, nếu không báo cáo năng lực nói
+    "đủ 50 câu G1" trong khi bộ sinh chỉ dựng được 12: G1 chỉ nhận cạnh trực tiếp,
+    còn tổng THAY_THE gộp cả nhánh trích tự động của G4′.
+    """
     ra = []
     for q in c.quan_he:
         if q.loai not in loai:
+            continue
+        if nguon is not None and nguon_cua(q) is not nguon:
             continue
         if loc_duyet and c.meta.quan_he_tu_dong and q.da_duyet is False:
             continue
@@ -76,9 +86,13 @@ def danh_gia(c: Corpus) -> list[NangLuc]:
         them("G2", dong,
              None if dong else f"chỉ {ty:.0%} điều khoản có khoảng hiệu lực đóng")
 
-    # ── G1: quan hệ thay thế ──
-    tt = _co_quan_he(c, {LoaiQuanHe.THAY_THE}, True)
-    them("G1", len(tt), None if tt else "không có QuanHe.THAY_THE")
+    # ── G1: quan hệ thay thế. CHỈ cạnh trực tiếp — xem NguonQuanHe ──
+    tt = _co_quan_he(c, {LoaiQuanHe.THAY_THE}, True, NguonQuanHe.CANH)
+    them("G1", len(tt),
+         None if tt else ("không có QuanHe.THAY_THE"
+                          if not _co_quan_he(c, {LoaiQuanHe.THAY_THE}, True)
+                          else "mọi quan hệ THAY_THE đều là bản trích tự động — G1 "
+                               "dựng trên cạnh đã biên tập, xem NguonQuanHe"))
 
     # ── G3: hướng dẫn + thay thế (mẹ bị thay) ──
     hd = _co_quan_he(c, {LoaiQuanHe.HUONG_DAN}, True)
@@ -88,8 +102,9 @@ def danh_gia(c: Corpus) -> list[NangLuc]:
          None if day else ("không có QuanHe.HUONG_DAN" if not hd
                            else "không văn bản mẹ nào vừa được hướng dẫn vừa bị thay thế"))
 
-    # ── G4′: lịch sử tác động. CAN_CU bị loại ở LoaiQuanHe.tac_dong() ──
-    td = _co_quan_he(c, LoaiQuanHe.tac_dong(), True)
+    # ── G4′: lịch sử tác động. CAN_CU bị loại ở LoaiQuanHe.tac_dong(); và chỉ nhánh
+    # trích tự động — cạnh REPLACES trực tiếp thuộc về G1, tính vào đây là đếm hai lần ──
+    td = _co_quan_he(c, LoaiQuanHe.tac_dong(), True, NguonQuanHe.TU_DONG)
     theo_dich: dict[str, set] = {}
     for q in td:
         theo_dich.setdefault(q.den_norm_id, set()).add(q.tu_norm_id)

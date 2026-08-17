@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Iterator
 
 from .schema import (Chunk, Component, CorpusMeta, DieuKhoanChuyenTiep, Expression,
-                     LoaiQuanHe, Norm, QuanHe, _ngay, sang_dict)
+                     LoaiQuanHe, NguonQuanHe, Norm, QuanHe, _ngay, sang_dict)
 
 
 class JsonlLoader:
@@ -95,11 +95,18 @@ class JsonlLoader:
                 loai = LoaiQuanHe(r["loai"])
             except ValueError:
                 continue          # loại quan hệ lạ -> bỏ, đừng đoán nó nghĩa là gì
+            # `nguon` lạ hoặc thiếu -> None, KHÔNG đoán. `truy_van.nguon_cua()` sẽ lùi
+            # về proxy và `kiem_gia_dinh_nguon()` báo là đang chạy bằng phỏng đoán.
+            # Gán bừa `CANH` ở đây thì G1 nuốt trọn tập của G4′ trong im lặng.
+            try:
+                nguon = NguonQuanHe(r["nguon"]) if r.get("nguon") else None
+            except ValueError:
+                nguon = None
             yield QuanHe(loai=loai, tu_norm_id=str(r["tu_norm_id"]),
                          den_norm_id=str(r["den_norm_id"]),
                          ngay_hieu_luc=_ngay(r.get("ngay_hieu_luc")),
                          do_tin=r.get("do_tin"), da_duyet=r.get("da_duyet"),
-                         pham_vi=r.get("pham_vi"))
+                         pham_vi=r.get("pham_vi"), nguon=nguon)
 
     def chuyen_tiep(self) -> Iterator[DieuKhoanChuyenTiep]:
         for r in self._dong("chuyen_tiep.jsonl"):

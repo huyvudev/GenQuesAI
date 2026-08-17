@@ -14,6 +14,7 @@ from .capabilities import danh_gia, in_bao_cao, kiem_chat_luong
 from .jsonl_loader import JsonlLoader, JsonlWriter
 from .neo4j_loader import Neo4jLoader
 from .schema import nap
+from .truy_van import kiem_gia_dinh_nguon
 
 
 def xuat(ra: str, gioi_han: int | None) -> int:
@@ -46,6 +47,12 @@ def soi(nguon: str | None, dung_neo4j: bool) -> int:
     else:
         c = nap(JsonlLoader(nguon))
     in_bao_cao(c, danh_gia(c))
+    # In TRƯỚC phần chất lượng dữ liệu: nếu nguồn quan hệ đang được đoán thì mấy con
+    # số G1/G4′ ở bảng trên là ước lượng, và người đọc cần biết điều đó trước.
+    if canh_nguon := kiem_gia_dinh_nguon(c):
+        print("\n  Nguồn quan hệ:")
+        for x in canh_nguon:
+            print(f"   ·  {x}")
     canh = kiem_chat_luong(c)
     if canh:
         print("\n  Chất lượng dữ liệu — mỗi mục là một lỗi ĐÃ GẶP THẬT:")

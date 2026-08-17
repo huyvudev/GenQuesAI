@@ -64,7 +64,38 @@ class QuanHe:                        # quan hệ giữa hai VĂN BẢN
     do_tin: float | None             # 0..1 nếu trích tự động
     da_duyet: bool | None            # người đã xác nhận chưa
     pham_vi: str | None              # "toàn bộ" / "Điều 5" / …
+    nguon: NguonQuanHe | None        # quan hệ này TỪ ĐÂU RA — xem dưới
 ```
+
+### `NguonQuanHe` — cùng lý do với `CAN_CU`, ở một trục khác
+
+```python
+class NguonQuanHe(Enum):
+    CANH    = "canh"      # cạnh có sẵn trong nguồn, đã biên tập
+    TU_DONG = "tu_dong"   # trích tự động (LLM/rule), mang do_tin/da_duyet
+```
+
+`LoaiQuanHe` nói quan hệ **nghĩa là gì**; `NguonQuanHe` nói nó **từ đâu ra**. Hai trục
+độc lập, và bộ sinh dùng cả hai:
+
+| | |
+|---|---|
+| **G1** thay thế | chỉ `THAY_THE` + `CANH` |
+| **G4′** lịch sử sửa đổi | chỉ `tac_dong()` + `TU_DONG` |
+
+> Trong đồ thị của `Chatbot-Law`, `(a)-[:REPLACES]->(b)` và
+> `(a)<-[:ENACTED_BY]-(Action{loai:'ThayThe'})-[:AFFECTS]->(b)` **cùng ra
+> `LoaiQuanHe.THAY_THE`**. Không có trục thứ hai thì hai nhóm lấy nhầm tập của nhau,
+> và không cổng C1–C5 nào thấy — mỗi câu vẫn tự nhất quán.
+>
+> Đo được hệ quả: trên corpus mẫu, báo cáo năng lực từng nói G1 có **38 ứng viên**
+> trong khi bộ sinh chỉ dùng được **19**. Đúng một nửa là nhánh trích tự động, bị đếm
+> ở cả G1 lẫn G4′.
+
+**`None` = corpus không khai.** Framework lùi về suy đoán `do_tin is None` và **nói rõ
+là đang suy đoán** (`truy_van.kiem_gia_dinh_nguon()`, in trong `framework.cli soi`).
+Suy đoán đúng với đồ thị kiểu `legal-rag`, nhưng corpus gán `do_tin` cho cả cạnh biên
+tập tay sẽ khiến G1 rỗng mà không có triệu chứng — nên khai thẳng vẫn hơn.
 
 ### `LoaiQuanHe` — chỗ này phải tách bạch
 
@@ -164,8 +195,13 @@ class CorpusMeta:
     ngay_chot: date                  # dữ liệu cập nhật tới ngày nào
     theo_doi_hieu_luc: bool          # True  -> hieu_luc_den=None nghĩa là CÒN hiệu lực
                                      # False -> nghĩa là KHÔNG BIẾT → khoá tầng 1, tắt G2′
-    quan_he_tu_dong: bool            # quan hệ do trích tự động? -> bắt buộc lọc do_tin/da_duyet
-    nguon: str | None
+    quan_he_tu_dong: bool            # corpus CÓ nhánh trích tự động? -> bắt buộc lọc
+                                     #   do_tin/da_duyet. KHÁC `QuanHe.nguon`: cờ này
+                                     #   nói về cả corpus, `nguon` nói về từng quan hệ.
+                                     #   Corpus trộn cả hai loại thì cờ = True và mỗi
+                                     #   quan hệ tự khai `nguon` của nó.
+    nguon: str | None                # mô tả nguồn dữ liệu (chuỗi tự do, không phải
+                                     #   NguonQuanHe — hai thứ khác nhau, đừng lẫn)
 ```
 
 Cùng loại vấn đề, một chỗ khác: `Norm.cap_bac`. Framework **không** được suy cấp bậc từ

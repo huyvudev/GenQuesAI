@@ -31,6 +31,28 @@ class LoaiQuanHe(str, Enum):
         return {cls.THAY_THE, cls.SUA_DOI, cls.BAI_BO}
 
 
+class NguonQuanHe(str, Enum):
+    """Quan hệ này TỪ ĐÂU RA — khác với nó NÓI GÌ (`LoaiQuanHe`).
+
+    Cùng một `LoaiQuanHe.THAY_THE` có thể đến từ hai chỗ hoàn toàn khác nhau, và bộ
+    sinh phân biệt chúng: **G1 chỉ dùng cạnh có sẵn, G4′ chỉ dùng bản trích tự động**.
+
+        CANH     `(a)-[:REPLACES]->(b)` — cạnh đã có trong nguồn, đã biên tập
+        TU_DONG  `(a)<-[:ENACTED_BY]-(Action{loai:'ThayThe'})-[:AFFECTS]->(b)`
+                 — trích bằng LLM, mang `do_tin`/`da_duyet`
+
+    Trước khi có trường này, hai nguồn bị gộp thành một giá trị enum và chỉ tách được
+    bằng dấu hiệu gián tiếp `do_tin is None`. Proxy đó ĐÚNG với `Neo4jLoader` nhưng
+    không phải hợp đồng: loader khác hoàn toàn có thể gán `do_tin` cho cạnh trực tiếp,
+    và lúc đó G1 lặng lẽ lấy tập ứng viên của G4′ — không cổng nào thấy.
+
+    `None` = corpus KHÔNG khai báo. Framework sẽ lùi về proxy và cảnh báo; không tự
+    đoán là `CANH`, vì đoán sai thì hỏng đúng theo kiểu vừa mô tả.
+    """
+    CANH = "canh"
+    TU_DONG = "tu_dong"
+
+
 LoaiComponent = Literal["Dieu", "Khoan", "Diem", "PhuLuc", "ToanVan"]
 
 
@@ -77,6 +99,7 @@ class QuanHe:
     do_tin: float | None = None
     da_duyet: bool | None = None
     pham_vi: str | None = None
+    nguon: NguonQuanHe | None = None     # None = corpus không khai; xem NguonQuanHe
 
 
 @dataclass(slots=True)
