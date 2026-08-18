@@ -15,7 +15,11 @@ def _esc(s) -> str:
 
 def _the(it: dict, i: int) -> str:
     rf = it.get("reference_fields") or {}
-    nguon = "".join(
+    # ` · ` chứ không phải `""`: thẻ có từ hai văn bản trở lên thì các số hiệu dính
+    # liền nhau thành một chuỗi vô nghĩa — `145/2020/NĐ-CP148/2018/NĐ-CP`. Lỗi này
+    # nằm im vì phần lớn thẻ chỉ có một link, tới khi C5 bổ sung link cho G2/G7/G8
+    # mới lộ. Người duyệt phải phân biệt được đâu là văn bản nào để bấm đúng cái.
+    nguon = " · ".join(
         f'<a href="{_esc(n["url"])}" target="_blank" rel="noopener">'
         f'{_esc(n["so_hieu"] or n["norm_id"])}</a>'
         if n.get("url") else f'<span class="nolink">{_esc(n["so_hieu"] or n["norm_id"])}</span>'
