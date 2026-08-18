@@ -36,6 +36,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -155,14 +156,22 @@ def _g6(r: dict) -> list[dict]:
     ]
 
 
+_TIEN_TO_DIEU = re.compile(r"^\s*(?:Điều|Dieu)\s*", re.IGNORECASE)
+
+
 def _g7(r: dict) -> list[dict]:
     rf = r["reference_fields"]
     expr = _id(r["gold_node_ids"][0], "Expression")
+    # `reference_fields["dieu"]` lấy từ `Component.duong_dan` — quy ước hiển thị của
+    # legal-rag, có chỗ ghi 'Dieu 50a' có chỗ ghi '50a'. Kỳ vọng phải nói về SỐ ĐIỀU
+    # (`so_thu_tu`), thứ độc lập với cách hiển thị; giữ nguyên `duong_dan` thì 15/90
+    # ca G7 đỏ chỉ vì tiền tố, và cái đỏ đó che mất lỗi thật.
+    so_dieu = _TIEN_TO_DIEU.sub("", str(rf["dieu"])).strip()
     return [
         # Kỳ vọng bắt trực tiếp chỗ dịch `HAS_PART*`: Điều này phải nằm trong tập
         # thành phần của văn bản, đúng số, đúng tiêu đề, và bản hiện hành đúng expr.
         # Dịch nhầm sang `HAS_PART` một-bước thì mọi Điều lồng dưới Chương biến mất.
-        _sk("dieu_hien_hanh", norm=rf["norm_id"], so_dieu=rf["dieu"],
+        _sk("dieu_hien_hanh", norm=rf["norm_id"], so_dieu=so_dieu,
             tieu_de=rf["tieu_de"], expr=expr),
         _sk("so_hieu_norm", norm=rf["norm_id"], so_hieu=rf["so_hieu"]),
     ]

@@ -33,9 +33,28 @@ from __future__ import annotations
 import re
 import unicodedata
 
-# `Ð` U+00D0 (ETH) và `Đ` U+0110 (D WITH STROKE) trông giống hệt nhau và dữ liệu thật
-# dùng LẪN LỘN: `01/2001/TTLT/BLÐTBXH-BTC` với `.../BLĐTBXH-BTC` là CÙNG một văn bản.
-_ĐONG_DANG = {"Ð": "Đ", "ð": "đ"}
+# KÝ TỰ NHÌN GIỐNG HỆT NHƯNG KHÁC MÃ. Đây là chỗ exact-match thua một cách vô hình:
+# hai chuỗi hiện lên màn hình y như nhau mà `==` trả False, nên hệ trả lời ĐÚNG bị
+# chấm SAI và không ai đọc ra vì sao.
+#
+#   `Ð` U+00D0 (ETH) vs `Đ` U+0110  — `01/2001/TTLT/BLÐTBXH-BTC` và `.../BLĐTBXH-BTC`
+#   `С` U+0421 (Kirin ES) vs `C`    — đo thật: `65/2025/TT-BTС` trong corpus
+#   `–` U+2013 (en dash) vs `-`     — đo thật: `3710/VPCP–WEBCP`
+#
+# Hai ca sau tìm thấy khi replay bộ đề đã freeze lên đồ thị: chúng làm G4′ báo "DƯ văn
+# bản" cho những văn bản thực ra đã có trong đáp án, chỉ khác một ký tự vô hình.
+#
+# Chỉ map những cặp TRÔNG GIỐNG HỆT. Kirin là nguồn phổ biến nhất (bố cục bàn phím,
+# copy-paste từ Word). Gặp ký tự lạ khác thì thêm vào đây, đừng nới regex.
+_ĐONG_DANG = {
+    "Ð": "Đ", "ð": "đ",
+    # Kirin -> Latin
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O",
+    "Р": "P", "С": "C", "Т": "T", "У": "Y", "Х": "X",
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "у": "y", "х": "x",
+    # các loại gạch ngang -> hyphen ASCII
+    "–": "-", "—": "-", "‒": "-", "−": "-", "‐": "-",
+}
 
 # Dạng CÓ NĂM. Sau `số/năm/` thì lấy tới khoảng trắng — ký hiệu có thể chứa `/` (TTLT),
 # `.` (CT.UBT), `&` (BKH&ĐT), chữ thường (TTg) và chữ số (QH15). Lớp ký tự liệt kê

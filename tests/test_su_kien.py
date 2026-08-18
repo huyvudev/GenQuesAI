@@ -51,8 +51,26 @@ def _ngay(s: str | None) -> date | None:
     return date.fromisoformat(s[:10]) if s else None
 
 
+def _pham_vi() -> dict:
+    if not PHAM_VI.exists():
+        return {}
+    return json.loads(PHAM_VI.read_text(encoding="utf-8")).get("nguon_khong_co", {})
+
+
+_KHONG_CO = _pham_vi()
+
+
+def _vang_o_nguon(loai: str, ma: str) -> bool:
+    return ma in set(_KHONG_CO.get(loai) or ())
+
+
 def _norm(c, nid: str):
     n = c.norms.get(nid)
+    if n is None and _vang_o_nguon("norm", nid):
+        # KHÔNG phải lỗi bộ xuất: đồ thị nguồn vốn không có văn bản này. Nghĩa là bộ
+        # đề đã freeze lệch phiên bản với đồ thị hiện tại — sinh lại bộ đề mới hết.
+        pytest.skip(f"Norm {nid!r} không có trong đồ thị nguồn lúc xuất fixture "
+                    f"— bộ đề lệch phiên bản, không phải lỗi mã")
     assert n is not None, (
         f"fixture thiếu Norm {nid!r}. Bộ xuất phải phủ mọi văn bản kỳ vọng nhắc tới "
         f"— chạy lại: python -m tests.trich_fixture")
@@ -61,6 +79,9 @@ def _norm(c, nid: str):
 
 def _expr(c, eid: str):
     e = c.expressions.get(eid)
+    if e is None and _vang_o_nguon("expr", eid):
+        pytest.skip(f"Expression {eid!r} không có trong đồ thị nguồn lúc xuất fixture "
+                    f"— bộ đề lệch phiên bản, không phải lỗi mã")
     assert e is not None, (
         f"fixture thiếu Expression {eid!r} — chạy lại: python -m tests.trich_fixture")
     return e
@@ -191,6 +212,9 @@ def _dieu_hien_hanh(c, s):
 
 def _norm_theo_sh(c, s):
     ids = tv.norm_theo_so_hieu(c, s["so_hieu"], chuan_hoa=sh_mod.khoa)
+    if not ids and _vang_o_nguon("so_hieu", s["so_hieu"]):
+        pytest.skip(f"số hiệu {s['so_hieu']!r} không có trong đồ thị nguồn "
+                    f"— bộ đề lệch phiên bản, không phải lỗi mã")
     assert ids, f"fixture thiếu văn bản số hiệu {s['so_hieu']!r}"
     return ids
 
@@ -316,6 +340,29 @@ def test_moi_loai_su_kien_deu_co_bo_kiem():
     thieu = {s["loai"] for _, s in _TAT_CA
              if s["muc"] == "chan" and s["loai"] not in BANG}
     assert not thieu, f"loại sự kiện chưa có bộ kiểm: {sorted(thieu)}"
+
+
+# Bao nhiêu phần kỳ vọng được phép "không kiểm được vì nguồn không có". Ngưỡng này là
+# cái chuông: bộ đề lệch phiên bản với đồ thị càng xa thì càng ít thứ được kiểm, và
+# một ngày nào đó bộ golden xanh mà chẳng kiểm gì. Đo lúc chốt: 24%.
+NGUONG_KHONG_KIEM_DUOC = 0.30
+
+
+def test_phan_khong_kiem_duoc_khong_qua_lon(corpus):
+    """Skip có đếm, có ngưỡng — nếu không thì skip chính là cách bộ golden chết dần."""
+    if not _KHONG_CO:
+        pytest.skip("fixture chưa ghi `nguon_khong_co` — chạy lại trich_fixture")
+    vang_n = set(_KHONG_CO.get("norm") or ())
+    vang_e = set(_KHONG_CO.get("expr") or ())
+    dinh = sum(1 for _, s in CHAN
+               if (s.get("norm") in vang_n or s.get("con") in vang_n
+                   or s.get("me") in vang_n or s.get("expr") in vang_e))
+    ty = dinh / max(len(CHAN), 1)
+    assert ty <= NGUONG_KHONG_KIEM_DUOC, (
+        f"{dinh}/{len(CHAN)} = {ty:.0%} kỳ vọng không kiểm được vì đồ thị nguồn thiếu "
+        f"thực thể (ngưỡng {NGUONG_KHONG_KIEM_DUOC:.0%}).\n"
+        f"Bộ đề đã freeze và đồ thị hiện tại đã lệch phiên bản quá xa — sinh lại bộ đề "
+        f"rồi chạy lại `trich_ky_vong` + `trich_fixture`.")
 
 
 def test_moi_item_deu_co_it_nhat_mot_ky_vong():

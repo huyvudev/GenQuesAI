@@ -271,12 +271,24 @@ def xuat(neo, ra_dir: Path, ky_vong: list[dict]) -> dict:
             for x in ds:
                 w.ghi(ten, x)
 
+    # Thực thể kỳ vọng nhắc tới mà ĐỒ THỊ NGUỒN không có. Phân biệt hai chuyện khác
+    # hẳn nhau, và trộn chúng là mất cả hai tín hiệu:
+    #   bộ xuất gom sót      -> LỖI của tests/trich_fixture.py, phải đỏ
+    #   nguồn vốn không có   -> bộ đề lệch phiên bản với đồ thị, không kiểm được
+    # Chốt ngay tại đây vì chỉ lúc này mới còn đồ thị trong tay.
+    thieu_norm = sorted(set(hat) - co_norm)
+    thieu_expr = sorted(set(exprs_can) - set(exprs))
     tk = {"norm": len(norms), "norm_hat": len(hat), "component": len(comps),
           "expression": len(exprs), "quan_he": len(canh), "chuyen_tiep": len(ct),
           "so_hieu_khong_tim_thay": sorted(mt["so_hieu"] - set(theo_sh)),
+          "nguon_khong_co_norm": len(thieu_norm),
+          "nguon_khong_co_expr": len(thieu_expr),
           "phu_dinh_da_chot": vang}
     (ra_dir / "pham_vi.json").write_text(
-        json.dumps({"day_du": False, "phu_dinh": vang, "thong_ke": tk},
+        json.dumps({"day_du": False, "phu_dinh": vang,
+                    "nguon_khong_co": {"norm": thieu_norm, "expr": thieu_expr,
+                                       "so_hieu": sorted(mt["so_hieu"] - set(theo_sh))},
+                    "thong_ke": tk},
                    ensure_ascii=False, indent=1), encoding="utf-8")
     return tk
 
