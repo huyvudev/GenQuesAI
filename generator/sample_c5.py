@@ -44,6 +44,13 @@ UNWIND $ids AS nid
 MATCH (n:Norm {norm_id: nid})
 RETURN nid AS norm_id, n.nguon_url AS url, n.tieu_de AS tieu_de, n.so_hieu AS so_hieu
 """
+# G8(b)/(c) chỉ có SỐ HIỆU, không có norm_id trong bộ đề — tra riêng.
+URL_THEO_SO_HIEU = """
+UNWIND $shs AS sh
+MATCH (n:Norm) WHERE n.so_hieu = sh
+RETURN 'so_hieu:' + sh AS norm_id, n.nguon_url AS url, n.tieu_de AS tieu_de,
+       n.so_hieu AS so_hieu
+"""
 
 
 def _mo_ta_kiem(it: dict) -> str:
@@ -76,11 +83,31 @@ def _cu_tu_hoi(it: dict) -> str:
 
 
 def _norm_ids(it: dict) -> list[str]:
+    """Văn bản gốc cần đưa link cho người duyệt.
+
+    Chỉ đọc tiền tố `Norm:` là hụt đúng ba nhóm: G2 và G7 ghi `gold_node_ids` dạng
+    `Expression:<norm_id>::<phần>@<ngày>`, còn G8 không trỏ vào node nào. Đo thật:
+    30/80 thẻ trong phiếu không có link nào, dù 100% Norm trong đồ thị đều có
+    `nguon_url`.
+
+    Thiếu link không làm hỏng bộ đề, nhưng làm hỏng C5 — người duyệt phải tự đi tìm
+    văn bản cho từng thẻ, và C5 vốn đã là khâu tốn công người nhất.
+    """
     out = []
     for x in it.get("gold_node_ids") or []:
         if x.startswith("Norm:"):
             out.append(x.split(":", 1)[1])
-    return out
+        elif x.startswith("Expression:") and "::" in x:
+            # `Expression:146475::Dieu 4@2020-12-25` -> norm_id `146475`
+            out.append(x.split(":", 1)[1].split("::", 1)[0])
+    rf = it.get("reference_fields") or {}
+    if nid := rf.get("norm_id"):            # G7 ghi thẳng norm_id
+        out.append(str(nid))
+    # G8(b)/(c) hỏi về một văn bản CÓ THẬT (Điều vượt số, năm trước khi ban hành) —
+    # người duyệt cần chính văn bản đó để xác nhận. G8(a)/(d) thì không có gì để link.
+    if it.get("group") == "G8" and (sh := rf.get("so_hieu")):
+        out.append(f"so_hieu:{sh}")
+    return list(dict.fromkeys(out))
 
 
 def rut_mau(items: list[dict], tong: int = 80, seed: int = 20260807) -> list[dict]:
@@ -123,7 +150,12 @@ def chuan_bi(items: list[dict], neo, tong: int = 80) -> list[dict]:
     """Rút mẫu + gắn câu hỏi kiểm + link văn bản gốc."""
     mau = rut_mau(items, tong)
     ids = sorted({x for it in mau for x in _norm_ids(it)})
-    thong_tin = {r["norm_id"]: r for r in neo.run(URL_NGUON, ids=ids)} if ids else {}
+    thuong = [x for x in ids if not x.startswith("so_hieu:")]
+    theo_sh = [x[len("so_hieu:"):] for x in ids if x.startswith("so_hieu:")]
+    thong_tin = {r["norm_id"]: r for r in neo.run(URL_NGUON, ids=thuong)} if thuong else {}
+    if theo_sh:
+        thong_tin.update({r["norm_id"]: r
+                          for r in neo.run(URL_THEO_SO_HIEU, shs=theo_sh)})
 
     for it in mau:
         it["c5_cau_hoi_kiem"] = _mo_ta_kiem(it)
