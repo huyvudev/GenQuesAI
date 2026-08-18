@@ -26,19 +26,51 @@ from .gold import find_evidence_span, gate_c1
 
 MIN_SO_VB = 2          # phải bị ≥2 văn bản tác động -> mới là câu hỏi DANH SÁCH
 
-SELECT = """
-MATCH (act:Action)-[:AFFECTS]->(vb:Norm)
-WHERE act.loai IN ['SuaDoi','ThayThe','BaiBo'] AND act.da_duyet = true
-  AND act.confidence >= $min_conf AND vb.so_hieu IS NOT NULL
-MATCH (act)-[:ENACTED_BY]->(nguon:Norm)
-WHERE nguon.so_hieu IS NOT NULL AND nguon.norm_id <> vb.norm_id
-WITH vb, collect(DISTINCT {sh: nguon.so_hieu, id: nguon.norm_id,
-                           loai: act.loai, ngay: act.ngay_hieu_luc}) AS ds
-WHERE size(ds) >= $min_vb
-RETURN vb.norm_id AS vb_id, vb.so_hieu AS vb_sh, vb.tieu_de AS vb_td, ds AS tac_dong
-ORDER BY size(ds) DESC
-LIMIT $pool
-"""
+def ung_vien(c, pool: int, min_conf: float) -> list[dict]:
+    """Bản duyệt `Corpus` của khối Cypher cũ (A1).
+
+        MATCH (act:Action)-[:AFFECTS]->(vb)  MATCH (act)-[:ENACTED_BY]->(nguon)
+        WHERE act.loai IN ['SuaDoi','ThayThe','BaiBo'] AND act.da_duyet = true
+          AND act.confidence >= $min_conf AND nguon.norm_id <> vb.norm_id
+        WITH vb, collect(DISTINCT {...}) AS ds  WHERE size(ds) >= $min_vb
+        ORDER BY size(ds) DESC  LIMIT $pool
+
+    Ba bộ lọc bắt buộc (§4.5) nằm gọn trong `LoaiQuanHe.tac_dong()` + `nguon`:
+    loại `CanCu` (59% quan hệ đã duyệt — gộp vào thì quá nửa đáp án sai), `da_duyet`,
+    và `confidence >= 0.85`. Chỉ nhánh TRÍCH TỰ ĐỘNG: cạnh REPLACES trực tiếp thuộc
+    về G1, tính vào đây là đếm hai lần cùng một sự kiện.
+
+    Thêm khoá phụ khi sắp xếp — `ORDER BY size(ds) DESC` một mình có hàng loạt ca
+    bằng điểm, và `LIMIT $pool` cắt vào giữa chúng theo thứ tự Neo4j tuỳ ý.
+    """
+    from framework.schema import LoaiQuanHe
+    from framework.truy_van import nguon_cua
+    from framework.schema import NguonQuanHe
+
+    td = LoaiQuanHe.tac_dong()
+    theo_dich: dict[str, dict[str, dict]] = {}
+    for q in c.quan_he:
+        if q.loai not in td or nguon_cua(q) is not NguonQuanHe.TU_DONG:
+            continue
+        if c.meta.quan_he_tu_dong and q.da_duyet is not True:
+            continue
+        if q.do_tin is not None and q.do_tin < min_conf:
+            continue
+        if q.tu_norm_id == q.den_norm_id:
+            continue
+        vb, ng = c.norms.get(q.den_norm_id), c.norms.get(q.tu_norm_id)
+        if not (vb and vb.so_hieu and ng and ng.so_hieu):
+            continue
+        theo_dich.setdefault(q.den_norm_id, {})[q.tu_norm_id] = {
+            "sh": ng.so_hieu, "id": ng.norm_id,
+            "loai": q.loai.value, "ngay": q.ngay_hieu_luc}
+
+    ra = [{"vb_id": vid, "vb_sh": c.norms[vid].so_hieu, "vb_td": c.norms[vid].tieu_de,
+           "tac_dong": [d[k] for k in sorted(d)]}
+          for vid, d in theo_dich.items() if len(d) >= MIN_SO_VB]
+    ra.sort(key=lambda r: (-len(r["tac_dong"]), r["vb_id"]))
+    return ra[:pool]
+
 
 TPL_LOOKUP = [
     "{sh} đã bị những văn bản nào sửa đổi, bổ sung hoặc thay thế?",
@@ -79,12 +111,12 @@ class Item:
     human_verified: bool = False
 
 
-def build(neo, store, n: int = 40, pool: int = 1500, min_conf: float = 0.85,
+def build(c, store, n: int = 40, pool: int = 1500, min_conf: float = 0.85,
           ty_le_situation: float = 0.5, seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool, min_conf=min_conf, min_vb=MIN_SO_VB)
+    rows = ung_vien(c, pool, min_conf)
     rng.shuffle(rows)
-    nhap_nhang = khoa_nhap_nhang(neo)
+    nhap_nhang = khoa_nhap_nhang(c)
 
     items: list[Item] = []
     stat = {"ung_vien": len(rows), "bo_vi_so_hieu": 0, "bo_vi_gop_con_1": 0,

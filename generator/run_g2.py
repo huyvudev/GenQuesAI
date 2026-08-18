@@ -14,7 +14,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .common import open_neo4j, open_qdrant, verify_point_id, setup_stdout
+from .common import nap_corpus, open_qdrant, verify_point_id, setup_stdout
 from . import g2_temporal
 from .run_g7 import chay_paraphrase
 
@@ -32,7 +32,7 @@ def main() -> int:
     ap.add_argument("--out", default="out/g2.jsonl")
     args = ap.parse_args()
 
-    neo, store = open_neo4j(), open_qdrant()
+    corpus, store = nap_corpus(getattr(args, 'corpus', None)), open_qdrant()
     snapshot = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     khop, kiem = verify_point_id(store)
@@ -41,7 +41,7 @@ def main() -> int:
         print("DỪNG — công thức point_id đã lệch so với index. Xem §10.1.")
         return 1
 
-    items, stat = g2_temporal.build(neo, store, n=args.n, pool=args.pool,
+    items, stat = g2_temporal.build(corpus, store, n=args.n, pool=args.pool,
                                     ty_le_situation=args.situation)
     print(f"\nsinh {len(items)} item")
     for k, v in stat.items():
@@ -68,7 +68,7 @@ def main() -> int:
     for k in g2_temporal.KINDS:
         c = sum(1 for x in items if x.as_of_kind == k)
         print(f"  {k:16} {c:3}  = {100.0*c/max(len(items),1):.0f}% (mục tiêu ≥25%)")
-    neo.close(); store.close()
+    store.close()
     return 0
 
 

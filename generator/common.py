@@ -101,12 +101,8 @@ def core_so_hieu(so_hieu: str | None) -> str | None:
     return _sh.trich(so_hieu)
 
 
-Q_MOI_SO_HIEU = "MATCH (n:Norm) WHERE n.so_hieu IS NOT NULL RETURN n.so_hieu AS sh, n.norm_id AS id"
-_cache_nhap_nhang: dict[int, frozenset] = {}
-
-
-def khoa_nhap_nhang(neo) -> frozenset[str]:
-    """Khoá số hiệu ứng với NHIỀU HƠN MỘT văn bản — quét toàn đồ thị, nhớ theo phiên.
+def khoa_nhap_nhang(c) -> frozenset[str]:
+    """Khoá số hiệu ứng với NHIỀU HƠN MỘT văn bản trong `Corpus`.
 
     Số hiệu dạng cũ không mang năm nên bị tái sử dụng: `90/CP` ngày 15/12/1995 và
     `90/CP` ngày 24/11/1993 là hai văn bản khác nhau. Nhóm nào có ĐÁP ÁN LÀ ĐỊNH DANH
@@ -116,19 +112,12 @@ def khoa_nhap_nhang(neo) -> frozenset[str]:
     Framework KHÔNG viết lại số hiệu cho duy nhất: bịa định danh thì câu hỏi trỏ vào
     văn bản không tồn tại. Cách xử lý là LOẠI, và khai ra ở báo cáo năng lực.
 
-    Đo trên mẫu 3.000 văn bản: 6 khoá / 12 văn bản (0,2%) — nhỏ nên loại là đủ. Corpus
-    nào tỷ lệ này cao thì `capabilities.kiem_chat_luong()` sẽ nói, và lúc đó mới đáng
-    dựng câu hỏi nêu kèm ngày ban hành.
+    Đo trên corpus thật: 0,2% số hiệu bị dùng lại — nhỏ nên loại là đủ. Corpus nào tỷ
+    lệ này cao thì `capabilities.kiem_chat_luong()` sẽ nói, và lúc đó mới đáng dựng
+    câu hỏi nêu kèm ngày ban hành.
     """
-    if (k := id(neo)) in _cache_nhap_nhang:
-        return _cache_nhap_nhang[k]
-    gom: dict[str, set] = {}
-    for r in neo.stream(Q_MOI_SO_HIEU):
-        if (kh := _sh.khoa(r["sh"])):
-            gom.setdefault(kh, set()).add(str(r["id"]))
-    ra = frozenset(kh for kh, v in gom.items() if len(v) > 1)
-    _cache_nhap_nhang[k] = ra
-    return ra
+    from framework.truy_van import khoa_nhap_nhang as _kn
+    return frozenset(_kn(c, _sh.khoa))
 
 
 def co_so_hieu(s: str | None) -> bool:
@@ -218,3 +207,44 @@ def open_qdrant():
         return QdrantStore(settings=_settings())
     except TypeError:
         return QdrantStore()          # bản cũ không nhận tham số settings
+
+
+# ── A1: bộ sinh đọc Corpus, không đọc Cypher ────────────────────────────────
+_corpus_da_nap = {}
+
+
+def nap_corpus(nguon: str | None = None, im_lang: bool = False):
+    """Nạp `framework.schema.Corpus` — từ thư mục JSONL, hoặc từ Neo4j nếu không có.
+
+    Đây là ranh giới A1: từ đây trở lên, bộ sinh KHÔNG biết Neo4j tồn tại. Đổi nguồn
+    (JSONL của người khác, SQL, API) chỉ cần viết thêm một loader.
+
+    Nạp trọn vào RAM. Đo trên corpus thật (36.558 văn bản · 2,1 triệu Component ·
+    557 triệu ký tự): **~2 GB**. Chấp nhận được, và đổi lại là mọi truy vấn sau đó
+    chạy trong bộ nhớ thay vì round-trip xuống Neo4j — bộ sinh cũ gọi `neo.run()` hàng
+    nghìn lần cho riêng phần tìm bẫy.
+
+    Nhớ theo `nguon` vì `run_all` sinh 8 nhóm trong một tiến trình; nạp lại 8 lần thì
+    mất 8 lần thời gian mà không được gì.
+    """
+    from framework.schema import nap
+    if nguon in _corpus_da_nap:
+        return _corpus_da_nap[nguon]
+
+    if nguon:
+        from framework.jsonl_loader import JsonlLoader
+        loader = JsonlLoader(nguon)
+    else:
+        from framework.neo4j_loader import Neo4jLoader
+        loader = Neo4jLoader(open_neo4j())
+
+    if not im_lang:
+        print(f"  nạp corpus từ {nguon or 'Neo4j'}…", flush=True)
+    c = nap(loader)
+    if not im_lang:
+        print(f"  {c!r}", flush=True)
+        from framework.truy_van import kiem_gia_dinh_nguon
+        for x in kiem_gia_dinh_nguon(c):
+            print(f"  ⚠️  {x}", flush=True)
+    _corpus_da_nap[nguon] = c
+    return c

@@ -23,24 +23,53 @@ from dataclasses import dataclass, field
 from .common import core_so_hieu
 from .gold import chunk_span, gate_c1
 
-SELECT = """
-MATCH (con:Norm)-[:GUIDED_BY]->(me:Norm)
-WHERE con.cap_bac IS NOT NULL AND me.cap_bac IS NOT NULL
-  AND con.cap_bac <> me.cap_bac
-  AND con.so_hieu IS NOT NULL AND me.so_hieu IS NOT NULL
-WITH con, me LIMIT $pool
-MATCH (con)-[:HAS_PART*]->(dc:Component)-[:HAS_VERSION]->(ec:Expression)
-MATCH (me)-[:HAS_PART*]->(dm:Component)-[:HAS_VERSION]->(em:Expression)
-WHERE dc.loai = 'Dieu' AND dm.loai = 'Dieu'
-  AND ec.hieu_luc_den IS NULL AND em.hieu_luc_den IS NULL   // (1) cùng còn hiệu lực
-  AND dc.tieu_de IS NOT NULL AND dm.tieu_de IS NOT NULL
-  AND toLower(dc.tieu_de) = toLower(dm.tieu_de)             // (2) cùng chủ đề cụ thể
-  AND size(dc.tieu_de) >= 15
-RETURN con.so_hieu AS con_sh, con.cap_bac AS con_cap, con.norm_id AS con_id,
-       me.so_hieu AS me_sh, me.cap_bac AS me_cap, me.norm_id AS me_id,
-       dc.tieu_de AS chu_de, ec.expr_id AS ex_con, em.expr_id AS ex_me
-LIMIT $cap
-"""
+def ung_vien(c, pool: int, cap: int) -> list[dict]:
+    """Bản duyệt `Corpus` của SELECT cũ (A1).
+
+    Cặp (con hướng dẫn mẹ, khác cấp bậc) có hai Điều CÙNG TIÊU ĐỀ và cùng còn hiệu
+    lực — ứng viên xung đột, người duyệt phán điều kiện (3) §4.2.
+    `cap_bac` phải do corpus khai; framework không suy từ loai_vb.
+    """
+    from framework import truy_van as tv
+
+    cap_ds: list[dict] = []
+    for con in c.norms.values():
+        if con.cap_bac is None or not con.so_hieu:
+            continue
+        for me_id in sorted(tv.huong_dan_cho(c, con.norm_id)):
+            me = c.norms.get(me_id)
+            if not (me and me.so_hieu and me.cap_bac is not None
+                    and me.cap_bac != con.cap_bac):
+                continue
+            cap_ds.append((con, me))
+    cap_ds.sort(key=lambda x: (x[0].norm_id, x[1].norm_id))
+    cap_ds = cap_ds[:pool]
+
+    def dieu_hieu_luc(norm_id):
+        ra = {}
+        for d in tv.moi_thanh_phan(c, norm_id):
+            if d.loai != "Dieu" or not d.tieu_de or len(d.tieu_de) < 15:
+                continue
+            for e in tv.cac_ban(c, d.component_id):
+                if e.hieu_luc_den is None:
+                    ra.setdefault(d.tieu_de.lower(), (d.tieu_de, e.expression_id))
+        return ra
+
+    kq: list[dict] = []
+    for con, me in cap_ds:
+        if len(kq) >= cap:
+            break
+        dc, dm = dieu_hieu_luc(con.norm_id), dieu_hieu_luc(me.norm_id)
+        for khoa in sorted(dc.keys() & dm.keys()):
+            kq.append({
+                "con_sh": con.so_hieu, "con_cap": con.cap_bac, "con_id": con.norm_id,
+                "me_sh": me.so_hieu, "me_cap": me.cap_bac, "me_id": me.norm_id,
+                "chu_de": dc[khoa][0], "ex_con": dc[khoa][1], "ex_me": dm[khoa][1],
+            })
+            if len(kq) >= cap:
+                break
+    return kq
+
 
 TPL = ("Về {chu_de}: {a} và {b} cùng có quy định. "
        "Trường hợp hai bên quy định khác nhau thì áp dụng theo văn bản nào?")
@@ -73,10 +102,10 @@ class Item:
                             "tiết? Chỉ khác chi tiết -> LOẠI, không phải xung đột.")
 
 
-def build(neo, store, n: int = 25, pool: int = 4000,
+def build(c, store, n: int = 25, pool: int = 4000,
           seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool, cap=n * 8)
+    rows = ung_vien(c, pool, n * 8)
     rng.shuffle(rows)
 
     items: list[Item] = []

@@ -11,7 +11,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from .common import open_neo4j, setup_stdout
+from .common import nap_corpus, setup_stdout
 from . import render_c5, sample_c5
 
 NGUONG = 95.0
@@ -20,12 +20,8 @@ NGUONG = 95.0
 def dung(eval_path: Path, out: Path, n: int) -> int:
     items = [json.loads(l) for l in eval_path.open(encoding="utf-8")]
     snapshot = items[0].get("graph_snapshot", "?") if items else "?"
-    neo = open_neo4j()
-    try:
-        mau = sample_c5.chuan_bi(items, neo, tong=n)
-    finally:
-        neo.close()
-
+    c = nap_corpus()
+    mau = sample_c5.chuan_bi(items, c, tong=n)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(render_c5.dung_html(mau, snapshot), encoding="utf-8")
     (out.parent / "c5_mau.jsonl").write_text(

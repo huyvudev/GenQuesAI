@@ -19,30 +19,71 @@ from .gold import chunk_span, find_evidence_span, gate_c1
 
 MAX_MOI_ME = 2
 
-SELECT = """
-MATCH (con:Norm)-[:GUIDED_BY]->(me:Norm)<-[:REPLACES]-(moi:Norm)
-WHERE con.so_hieu IS NOT NULL AND me.so_hieu IS NOT NULL AND moi.so_hieu IS NOT NULL
-  AND moi.ngay_hieu_luc IS NOT NULL AND me.ngay_hieu_luc IS NOT NULL
-  AND moi.ngay_hieu_luc > me.ngay_hieu_luc
-  AND con.norm_id <> me.norm_id AND con.norm_id <> moi.norm_id
-WITH con, me, moi LIMIT $pool
-MATCH (con)-[:HAS_PART*]->(c:Component)-[:HAS_VERSION]->(e:Expression)
-WITH con, me, moi,
-     count(e) AS tong,
-     count(CASE WHEN e.hieu_luc_den IS NULL THEN 1 END) AS mo,
-     // Chỉ lấy expr của ĐIỀU: point trong Qdrant nằm ở mức Điều, lấy expr của
-     // Khoản/Điểm thì chunk_span() không tìm ra point -> item mất gold_spans.
-     head(collect(CASE WHEN c.loai = 'Dieu' AND e.hieu_luc_den IS NULL
-                       THEN e.expr_id END)) AS ex_mo,
-     head(collect(CASE WHEN c.loai = 'Dieu' THEN e.expr_id END)) AS ex_bat_ky
-WHERE tong > 0 AND (mo = tong OR mo = 0)          // loại ca 'một phần'
-RETURN con.norm_id AS con_id, con.so_hieu AS con_sh, con.tieu_de AS con_td,
-       me.so_hieu AS me_sh, me.norm_id AS me_id,
-       moi.so_hieu AS moi_sh, moi.norm_id AS moi_id,
-       moi.ngay_hieu_luc AS moi_hl,
-       (mo = tong) AS con_hieu_luc,
-       coalesce(ex_mo, ex_bat_ky) AS expr_id
-"""
+def ung_vien(c, pool: int) -> list[dict]:
+    """Bản duyệt `Corpus` của khối Cypher cũ (A1).
+
+        MATCH (con)-[:GUIDED_BY]->(me)<-[:REPLACES]-(moi)
+        WHERE moi.ngay_hieu_luc > me.ngay_hieu_luc, con khác cả me lẫn moi
+        WITH con, me, moi LIMIT $pool
+        MATCH (con)-[:HAS_PART*]->(c)-[:HAS_VERSION]->(e)
+        WHERE tong > 0 AND (mo = tong OR mo = 0)      // loại ca 'một phần'
+
+    Ba chỗ giữ nguyên ngữ nghĩa:
+
+    · **`mo = tong OR mo = 0`** — văn bản con phải hoặc còn hiệu lực TOÀN BỘ, hoặc
+      hết TOÀN BỘ. Ca 'một phần' không có nhãn Có/Không đơn trị nên không hỏi được.
+    · **chỉ lấy expr của ĐIỀU.** Point trong Qdrant nằm ở mức Điều; lấy expr của
+      Khoản/Điểm thì `chunk_span()` không tìm ra point và item mất gold_spans.
+    · **ưu tiên expr còn mở**, lùi về expr bất kỳ — `coalesce(ex_mo, ex_bat_ky)`.
+
+    Khác Cypher cũ đúng một chỗ, và là chỗ SỬA: `head(collect(...))` chọn expr bất
+    kỳ trong nhóm; ở đây `min(...)` cho xác định. Cùng lỗi với `BAY_KHAC_VB` của G7.
+    """
+    from framework import truy_van as tv
+
+    ra: list[dict] = []
+    for con in c.norms.values():
+        if not con.so_hieu:
+            continue
+        for me_id in sorted(tv.huong_dan_cho(c, con.norm_id)):
+            me = c.norms.get(me_id)
+            if not (me and me.so_hieu and me.ngay_hieu_luc and me_id != con.norm_id):
+                continue
+            for moi_id in sorted(tv.thay_the_boi(c, me_id, nguon="canh")):
+                moi = c.norms.get(moi_id)
+                if not (moi and moi.so_hieu and moi.ngay_hieu_luc):
+                    continue
+                if moi.ngay_hieu_luc <= me.ngay_hieu_luc or moi_id == con.norm_id:
+                    continue
+                ra.append({"con": con, "me": me, "moi": moi})
+    ra.sort(key=lambda r: (r["con"].norm_id, r["me"].norm_id, r["moi"].norm_id))
+    ra = ra[:pool]
+
+    kq: list[dict] = []
+    for r in ra:
+        con = r["con"]
+        tong = mo = 0
+        ex_mo: list[str] = []
+        ex_bat_ky: list[str] = []
+        for comp in tv.moi_thanh_phan(c, con.norm_id):
+            for e in tv.cac_ban(c, comp.component_id):
+                tong += 1
+                con_mo = e.hieu_luc_den is None
+                mo += 1 if con_mo else 0
+                if comp.loai == "Dieu":
+                    (ex_mo if con_mo else ex_bat_ky).append(e.expression_id)
+        if tong == 0 or not (mo == tong or mo == 0):
+            continue
+        expr = min(ex_mo) if ex_mo else (min(ex_bat_ky) if ex_bat_ky else None)
+        kq.append({
+            "con_id": con.norm_id, "con_sh": con.so_hieu, "con_td": con.tieu_de,
+            "me_sh": r["me"].so_hieu, "me_id": r["me"].norm_id,
+            "moi_sh": r["moi"].so_hieu, "moi_id": r["moi"].norm_id,
+            "moi_hl": r["moi"].ngay_hieu_luc,
+            "con_hieu_luc": mo == tong, "expr_id": expr,
+        })
+    return kq
+
 
 TPL_LOOKUP = ("{con} hướng dẫn {me}. {me} đã bị {moi} thay thế. "
               "{con} còn hiệu lực không?")
@@ -73,10 +114,10 @@ class Item:
     human_verified: bool = False
 
 
-def build(neo, store, n: int = 60, pool: int = 4000, ty_le_situation: float = 0.6,
+def build(c, store, n: int = 60, pool: int = 4000, ty_le_situation: float = 0.6,
           seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool)
+    rows = ung_vien(c, pool)
     rng.shuffle(rows)
 
     items: list[Item] = []

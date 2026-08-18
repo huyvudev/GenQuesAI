@@ -16,7 +16,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .common import open_neo4j, open_qdrant, verify_point_id, setup_stdout
+from .common import nap_corpus, open_qdrant, verify_point_id, setup_stdout
 from . import g7_content, paraphrase
 
 GENERATOR_VERSION = "1.0"
@@ -62,7 +62,7 @@ def main() -> int:
     ap.add_argument("--out", default="out/g7.jsonl")
     args = ap.parse_args()
 
-    neo, store = open_neo4j(), open_qdrant()
+    corpus, store = nap_corpus(getattr(args, 'corpus', None)), open_qdrant()
     snapshot = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     khop, kiem = verify_point_id(store)
@@ -71,7 +71,7 @@ def main() -> int:
         print("DỪNG — công thức point_id đã lệch so với index. Xem §10.1.")
         return 1
 
-    items, stat = g7_content.build(neo, store, n=args.n, pool=args.pool,
+    items, stat = g7_content.build(corpus, store, n=args.n, pool=args.pool,
                                    ty_le_situation=args.situation)
     print(f"\nsinh {len(items)} item")
     for k, v in stat.items():
@@ -98,7 +98,7 @@ def main() -> int:
     print(f"\nđã ghi {len(items)} item -> {out}")
     print(f"  situation {sit}/{len(items)} = {100.0*sit/max(len(items),1):.0f}%"
           f"  (mục tiêu ≥50% cho G7)")
-    neo.close(); store.close()
+    store.close()
     return 0
 
 

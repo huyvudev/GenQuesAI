@@ -35,33 +35,71 @@ MAX_MOI_CAP = 2           # tối đa 2 câu / cặp REPLACES
 MIN_LEN, MAX_LEN = 250, 2500
 MIN_NGAY = 40             # khoảng hiệu lực tối thiểu, đủ tách 3 mốc hỏi
 
-SELECT = """
-MATCH (moi:Norm)-[:REPLACES]->(cu:Norm)
-WHERE moi.ngay_hieu_luc IS NOT NULL AND cu.ngay_hieu_luc IS NOT NULL
-  AND moi.ngay_hieu_luc > cu.ngay_hieu_luc
-  AND moi.so_hieu IS NOT NULL AND cu.so_hieu IS NOT NULL
-MATCH (cu)-[:HAS_PART*]->(d:Component)-[:HAS_VERSION]->(e:Expression)
-WHERE d.loai = 'Dieu'
-  AND e.hieu_luc_den IS NOT NULL AND e.hieu_luc_tu IS NOT NULL
-  AND e.hieu_luc_den = moi.ngay_hieu_luc          // mốc chuyển giao rõ ràng
-  AND e.hieu_luc_den.year <= 2030                 // loại giá trị sentinel năm 3000
-  AND duration.inDays(e.hieu_luc_tu, e.hieu_luc_den).days >= $min_ngay
-  AND d.tieu_de IS NOT NULL AND size(d.tieu_de) >= 12 AND size(d.tieu_de) <= 80
-  AND NONE(k IN $loai_tru WHERE toLower(d.tieu_de) CONTAINS k)
-RETURN cu.norm_id AS cu_id, cu.so_hieu AS cu_so_hieu, cu.tieu_de AS cu_tieu_de,
-       moi.norm_id AS moi_id, moi.so_hieu AS moi_so_hieu,
-       d.so_thu_tu AS stt, d.tieu_de AS dieu_tieu_de, d.duong_dan AS duong_dan,
-       e.expr_id AS expr_id, e.hieu_luc_tu AS tu, e.hieu_luc_den AS den
-ORDER BY e.hieu_luc_den DESC
-LIMIT $pool
-"""
+def ung_vien(c, pool: int, min_ngay: int, loai_tru: list[str]) -> list[dict]:
+    """Bản duyệt `Corpus` của SELECT cũ (A1).
+
+    Điều kiện cốt lõi giữ nguyên từng chữ, vì mỗi cái là một bài học đã trả giá:
+
+    · `e.hieu_luc_den = moi.ngay_hieu_luc` — mốc chuyển giao phải RÕ RÀNG. 10% cạnh
+      lệch mốc bị loại: không rõ ngày chuyển giao thì không dùng làm đáp án được.
+    · `hieu_luc_den.year <= 2030` — loại sentinel năm 3000.
+    · khoảng >= min_ngay — đủ dài để đặt mốc `mid_interval` có nghĩa.
+    · tiêu đề 12–80 ký tự, loại boilerplate — tiêu đề là nguyên liệu câu situation.
+    """
+    from framework import truy_van as tv
+
+    ra: list[dict] = []
+    for cu in c.norms.values():
+        if not (cu.so_hieu and cu.ngay_hieu_luc):
+            continue
+        for moi_id in tv.thay_the_boi(c, cu.norm_id, nguon="canh"):
+            moi = c.norms.get(moi_id)
+            if not (moi and moi.so_hieu and moi.ngay_hieu_luc
+                    and moi.ngay_hieu_luc > cu.ngay_hieu_luc):
+                continue
+            for d in tv.moi_thanh_phan(c, cu.norm_id):
+                if d.loai != "Dieu":
+                    continue
+                td = d.tieu_de or ""
+                if not (12 <= len(td) <= 80):
+                    continue
+                if any(x in td.lower() for x in loai_tru):
+                    continue
+                for e in tv.cac_ban(c, d.component_id):
+                    if not (e.hieu_luc_tu and e.hieu_luc_den):
+                        continue
+                    if e.hieu_luc_den != moi.ngay_hieu_luc:
+                        continue
+                    if e.hieu_luc_den.year > 2030:
+                        continue
+                    if (e.hieu_luc_den - e.hieu_luc_tu).days < min_ngay:
+                        continue
+                    ra.append({
+                        "cu_id": cu.norm_id, "cu_so_hieu": cu.so_hieu,
+                        "cu_tieu_de": cu.tieu_de,
+                        "moi_id": moi.norm_id, "moi_so_hieu": moi.so_hieu,
+                        "stt": d.so_thu_tu, "dieu_tieu_de": td,
+                        # `duong_dan` là trường riêng của legal-rag, Corpus không có —
+                        # dựng lại từ loai+stt, chỉ dùng để hiển thị
+                        "duong_dan": f"Dieu {d.so_thu_tu}",
+                        "expr_id": e.expression_id,
+                        "tu": e.hieu_luc_tu, "den": e.hieu_luc_den,
+                    })
+    ra.sort(key=lambda r: (-r["den"].toordinal(), r["expr_id"]))
+    return ra[:pool]
+
+
+def bay_moi(c, moi_id: str) -> list[str]:
+    """Bẫy: 2 Điều còn hiệu lực của văn bản MỚI — phía sai thời điểm của cùng mốc."""
+    from framework import truy_van as tv
+    ra = sorted(e.expression_id
+                for d in tv.moi_thanh_phan(c, moi_id) if d.loai == "Dieu"
+                for e in tv.cac_ban(c, d.component_id) if e.hieu_luc_den is None)
+    return ra[:2]
+
 
 # Điều của văn bản MỚI — làm bẫy cho mid/near (đúng chủ đề, SAI thời điểm).
-BAY_MOI = """
-MATCH (n:Norm {norm_id:$moi_id})-[:HAS_PART*]->(k:Component)-[:HAS_VERSION]->(e:Expression)
-WHERE k.loai = 'Dieu' AND e.hieu_luc_den IS NULL
-RETURN e.expr_id AS ex LIMIT 2
-"""
+
 
 TPL_LOOKUP = {
     "con_hieu_luc": "Tại thời điểm {as_of}, Điều {stt} của {so_hieu} quy định gì?",
@@ -117,10 +155,10 @@ PERSONA_SIT = ["chu_ho_kinh_doanh", "nguoi_dan", "luat_su"]
 KINDS = ["mid_interval", "near_boundary", "on_boundary"]
 
 
-def build(neo, store, n: int = 80, pool: int = 6000, ty_le_situation: float = 0.6,
+def build(c, store, n: int = 80, pool: int = 6000, ty_le_situation: float = 0.6,
           seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool, min_ngay=MIN_NGAY, loai_tru=LOAI_TRU)
+    rows = ung_vien(c, pool, MIN_NGAY, LOAI_TRU)
     rng.shuffle(rows)
 
     items: list[Item] = []
@@ -205,7 +243,7 @@ def build(neo, store, n: int = 80, pool: int = 6000, ty_le_situation: float = 0.
         # Bẫy = phía SAI thời điểm của cùng mốc chuyển giao.
         bay = []
         try:
-            nguon = ([x["ex"] for x in neo.run(BAY_MOI, moi_id=r["moi_id"])]
+            nguon = (bay_moi(c, r["moi_id"])
                      if con_hieu_luc else [r["expr_id"]])
             for ex in nguon:
                 s2, _ = chunk_span(store, ex, 0)

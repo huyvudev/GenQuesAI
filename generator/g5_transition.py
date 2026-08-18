@@ -19,28 +19,47 @@ from .gold import chunk_span, gate_c1
 
 MAX_MOI_NORM = 3
 
-SELECT = """
-MATCH (n:Norm)-[:HAS_TRANSITION]->(t:TransitionRule)
-WHERE t.da_duyet = true AND t.confidence >= $min_conf
-  AND t.dieu_kien IS NOT NULL AND t.van_ban_ap_dung IS NOT NULL
-  AND size(t.dieu_kien) >= 25 AND size(t.dieu_kien) <= 260
-  AND n.so_hieu IS NOT NULL
-OPTIONAL MATCH (n)-[:HAS_PART*]->(d:Component)-[:HAS_VERSION]->(e:Expression)
-// `CONTAINS ('Điều ' + so_thu_tu)` khớp theo TIỀN TỐ: tìm "Điều 22" thì "Điều 2"
-// cũng khớp. Cộng với `head(collect(...))` không sắp thì gold span trỏ vào một Điều
-// KHÁC HẲN, không chứa điều khoản chuyển tiếp — và `context_recall` chấm trên một
-// đoạn không trả lời được câu hỏi. Đo thật: sinh hai lần ra `Dieu 2` và `Dieu 22`.
-// `(\D.*)?` bắt buộc ký tự sau số phải KHÔNG phải chữ số, tức khớp trọn số Điều.
-WHERE d.loai = 'Dieu'
-  AND t.nguon_dieu_khoan =~ ('(?s).*Điều ' + d.so_thu_tu + '(\\D.*)?')
-RETURN n.norm_id AS norm_id, n.so_hieu AS so_hieu,
-       t.rule_id AS rule_id, t.dieu_kien AS dieu_kien,
-       t.van_ban_ap_dung AS ap_dung, t.nguon_dieu_khoan AS nguon,
-       // `min` thay `head(collect(...))`: xác định, không phụ thuộc thứ tự Neo4j trả về
-       t.confidence AS conf, min(e.expr_id) AS expr_id
-ORDER BY t.confidence DESC, t.rule_id
-LIMIT $pool
-"""
+def ung_vien(c, pool: int, min_conf: float) -> list[dict]:
+    """Bản duyệt `Corpus` của SELECT cũ (A1).
+
+    Gold span: Điều mà `nguon_dieu_khoan` nói tới, khớp TRỌN số Điều. Bài học G5 cũ:
+    `CONTAINS 'Điều ' + stt` khớp tiền tố — tìm "Điều 22" thì "Điều 2" cũng trúng,
+    77% ứng viên có >1 Điều cùng khớp và gold span thành trò tung đồng xu. Ở đây kiểm
+    ký tự đứng sau số: phải không phải chữ số.
+    """
+    import re
+    from framework import truy_van as tv
+
+    ra: list[dict] = []
+    for t in c.chuyen_tiep:
+        if c.meta.quan_he_tu_dong and t.da_duyet is not True:
+            continue
+        if t.do_tin is None or t.do_tin < min_conf:
+            continue
+        if not (t.dieu_kien and t.ap_dung and 25 <= len(t.dieu_kien) <= 260):
+            continue
+        n = c.norms.get(t.norm_id)
+        if not (n and n.so_hieu):
+            continue
+        expr = None
+        nguon = t.nguon_component_id or ""
+        for d in tv.moi_thanh_phan(c, t.norm_id):
+            if d.loai != "Dieu" or not d.so_thu_tu:
+                continue
+            if not re.search(rf"Điều {re.escape(str(d.so_thu_tu))}(\D|$)", nguon):
+                continue
+            for e in tv.cac_ban(c, d.component_id):
+                if expr is None or e.expression_id < expr:
+                    expr = e.expression_id       # min() — xác định
+        ra.append({
+            "norm_id": n.norm_id, "so_hieu": n.so_hieu,
+            "rule_id": t.rule_id, "dieu_kien": t.dieu_kien,
+            "ap_dung": t.ap_dung, "nguon": nguon,
+            "conf": t.do_tin, "expr_id": expr,
+        })
+    ra.sort(key=lambda r: (-r["conf"], r["rule_id"]))
+    return ra[:pool]
+
 
 TPL_LOOKUP = "Theo {sh}, {dieu_kien} thì xử lý thế nào?"
 TPL_SITUATION = "{dieu_kien} thì bây giờ áp dụng theo quy định nào?"
@@ -69,10 +88,10 @@ class Item:
     human_verified: bool = False
 
 
-def build(neo, store, n: int = 30, pool: int = 900, min_conf: float = 0.9,
+def build(c, store, n: int = 30, pool: int = 900, min_conf: float = 0.9,
           ty_le_situation: float = 0.7, seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool, min_conf=min_conf)
+    rows = ung_vien(c, pool, min_conf)
     rng.shuffle(rows)
 
     items: list[Item] = []

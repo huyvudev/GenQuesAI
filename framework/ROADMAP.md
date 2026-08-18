@@ -43,10 +43,16 @@ Hệ quả: `recall` từ nhị phân thành liên tục. Chấp nhận được
 Giữ `chunk_id` làm đường nhanh tuỳ chọn, giữ `chunk_text_sha256` vì nó bắt được ca
 *id còn nguyên nhưng nội dung đã đổi* — lỗi im lặng duy nhất mọi cổng khác không thấy.
 
-### A1. Bộ sinh đọc `Corpus` thay vì Neo4j  *(lớn nhất)*
+### A1. Bộ sinh đọc `Corpus` thay vì Neo4j  ✅ **XONG** (2026-08-18)
 
-8 module trong `generator/` đang chạy Cypher trực tiếp. Chuyển sang truy vấn trên
-`framework.schema.Corpus`.
+Cả 8 module `generator/` nay duyệt `Corpus` qua `framework/truy_van.py`; không còn lời
+gọi `neo.run()` nào ngoài `Neo4jLoader` (đúng vai). `run_all --corpus <thư mục JSONL>`
+chạy trọn bộ sinh KHÔNG cần Neo4j.
+
+Đối chiếu ứng viên Corpus-vs-Cypher trên đồ thị thật trước khi thay:
+G1 2500/2500 khớp · G3 843/843 khớp · G4 2426/2507 (81 ca lệch là Cypher đếm BẢN GHI
+Action thay vì VĂN BẢN nguồn — bản mới đúng hơn). Nạp trọn corpus ~2 GB RAM / ~2 phút,
+đổi lại mọi truy vấn chạy trong bộ nhớ.
 
 **Chỗ khó:** nhiều query dùng `HAS_PART*` — đường đi biến độ dài của Cypher — phải viết
 lại thành duyệt cây trên `Corpus.comp_theo_norm`. Không khó về thuật toán nhưng **dễ sai

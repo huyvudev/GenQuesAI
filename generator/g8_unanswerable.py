@@ -17,18 +17,23 @@ from dataclasses import dataclass, field
 from .common import core_so_hieu
 
 # (a) số hiệu đúng hình thức nhưng KHÔNG tồn tại — lấy mẫu thật rồi đổi số
-MAU_SO_HIEU = """
-MATCH (n:Norm) WHERE n.so_hieu IS NOT NULL AND n.ngay_hieu_luc IS NOT NULL
-RETURN n.so_hieu AS so_hieu, n.norm_id AS norm_id, n.ngay_hieu_luc AS hl
-ORDER BY n.ngay_hieu_luc DESC LIMIT $k
-"""
-# (b) số Điều vượt quá: lấy các số Điều CÓ THẬT của một văn bản
-DIEU_CUA_VB = """
-MATCH (n:Norm {norm_id:$norm_id})-[:HAS_PART*]->(d:Component)
-WHERE d.loai = 'Dieu' AND d.so_thu_tu IS NOT NULL
-RETURN collect(DISTINCT d.so_thu_tu) AS ds
-"""
-TON_TAI = "MATCH (n:Norm) WHERE n.so_hieu CONTAINS $sh RETURN count(n) AS c"
+def mau_so_hieu(c, k: int) -> list[dict]:
+    """400 văn bản mới nhất có số hiệu + ngày hiệu lực — nguyên liệu cho cả 4 công thức."""
+    ds = [n for n in c.norms.values() if n.so_hieu and n.ngay_hieu_luc]
+    ds.sort(key=lambda n: (-n.ngay_hieu_luc.toordinal(), n.norm_id))
+    return [{"so_hieu": n.so_hieu, "norm_id": n.norm_id, "hl": n.ngay_hieu_luc}
+            for n in ds[:k]]
+
+
+def dieu_cua_vb(c, norm_id: str) -> list:
+    from framework import truy_van as tv
+    return sorted({d.so_thu_tu for d in tv.moi_thanh_phan(c, norm_id)
+                   if d.loai == "Dieu" and d.so_thu_tu})
+
+
+def ton_tai(c, sh: str) -> bool:
+    """Số hiệu bịa có TRÙNG văn bản thật không — bắt buộc kiểm trước khi dùng."""
+    return any(sh in (n.so_hieu or "") for n in c.norms.values())
 
 # (d) ngoài phạm vi đã nạp — chủ đề chắc chắn không có trong corpus luật VN.
 #
@@ -92,9 +97,9 @@ def _doi_so(sh: str, rng: random.Random) -> str | None:
     return f"{rng.randint(700, 999)}{m.group(2)}"
 
 
-def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], dict]:
+def build(c, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    mau = neo.run(MAU_SO_HIEU, k=400)
+    mau = mau_so_hieu(c, 400)
     rng.shuffle(mau)
 
     items: list[Item] = []
@@ -134,7 +139,7 @@ def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], di
             if not gia:
                 continue
             # Bắt buộc đối chiếu: số bịa ra mà TRÙNG văn bản thật thì câu hỏi có đáp án.
-            if neo.run(TON_TAI, sh=gia)[0]["c"] > 0:
+            if ton_tai(c, gia):
                 stat["bo_vi_trung_that"] += 1
                 continue
             it = Item(id="", cong_thuc="a",
@@ -143,7 +148,7 @@ def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], di
                       reference_fields={"so_hieu_gia": gia})
 
         elif ct == "b":
-            ds = neo.run(DIEU_CUA_VB, norm_id=r["norm_id"])[0]["ds"] or []
+            ds = dieu_cua_vb(c, r["norm_id"])
             so = [int(x) for x in ds if str(x).isdigit()]
             if not so:
                 continue
@@ -155,8 +160,7 @@ def build(neo, store, n: int = 25, seed: int = 20260806) -> tuple[list[Item], di
                                         "dieu_lon_nhat_thuc_te": max(so)})
 
         elif ct == "c":
-            hl = r["hl"]
-            nam = (hl.to_native() if hasattr(hl, "to_native") else hl).year
+            nam = r["hl"].year          # Corpus trả datetime.date thuần
             truoc = nam - rng.randint(3, 10)
             it = Item(id="", cong_thuc="c",
                       question_template="Năm {nam}, {sh} quy định thế nào về vấn đề này?",

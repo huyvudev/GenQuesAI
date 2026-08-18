@@ -62,118 +62,100 @@ TIEU_DE = [
 ]
 
 
-def _g7_du_lieu(so_vb: int = 6):
-    rows, payload = [], {}
-    for i in range(so_vb):
-        expr = f"vb{i}::Dieu {i + 1}@2024-01-01"
-        rows.append({
-            "norm_id": f"vb{i}", "so_hieu": f"{10 + i}/2024/NĐ-CP",
-            "norm_tieu_de": f"Nghị định số {10 + i}", "linh_vuc": [],
-            "loai_vb": "NghiDinh", "comp_id": f"c{i}", "stt": str(i + 1),
-            "dieu_tieu_de": TIEU_DE[i % len(TIEU_DE)],
-            "duong_dan": f"Điều {i + 1}", "expr_id": expr,
-            "anh_em": [f"vb{i}::Dieu 99@2024-01-01"],
-        })
-        for e in (expr, f"vb{i}::Dieu 99@2024-01-01", f"khac{i}::Dieu {i + 1}@2024-01-01"):
-            payload[point_id(e, 0)] = {"text": _noi_dung(i), "n_parts": 1,
-                                       "tieu_de": TIEU_DE[i % len(TIEU_DE)]}
-    return rows, _Store(payload)
+def _g7_corpus(so_vb: int = 6, xao_id=None):
+    """Corpus dựng tay cho G7 — sau A1, bộ sinh đọc thẳng `Corpus`.
+
+    `xao_id` đổi THỨ TỰ CHÈN của dict norms — mô phỏng "nguồn trả thứ tự khác".
+    Sau A1 nguồn phi xác định duy nhất còn lại là thứ tự duyệt dict, và bộ sinh phải
+    bất biến với nó.
+    """
+    from datetime import date
+    from framework.schema import Component, Corpus, CorpusMeta, Expression, Norm
+
+    c = Corpus(meta=CorpusMeta(ten="thu", theo_doi_hieu_luc=True))
+    thu_tu = list(range(so_vb))
+    if xao_id is not None:
+        random.Random(xao_id).shuffle(thu_tu)
+    payload = {}
+    for i in thu_tu:
+        nid = f"vb{i}"
+        c.norms[nid] = Norm(nid, f"{10 + i}/2024/NĐ-CP", tieu_de=f"Nghị định số {10+i}",
+                            loai_vb="NghiDinh", ngay_hieu_luc=date(2024, 1, 1))
+        for so, ten in ((i + 1, TIEU_DE[i % len(TIEU_DE)]), (99, "Điều khoản dự phòng về báo cáo")):
+            cid = f"{nid}::d{so}"
+            c.components[cid] = Component(cid, nid, "Dieu", None, str(so), ten, so)
+            eid = f"{nid}::Dieu {so}@2024-01-01"
+            c.expressions[eid] = Expression(eid, cid, _noi_dung(i), date(2024, 1, 1), None)
+            payload[point_id(eid, 0)] = {"text": _noi_dung(i), "n_parts": 1, "tieu_de": ten}
+        # van ban khac co Dieu cung so — bay cross-norm
+        nid2 = f"khac{i}"
+        c.norms[nid2] = Norm(nid2, f"{50 + i}/2024/TT-BYT", tieu_de="Thông tư khác",
+                             ngay_hieu_luc=date(2024, 1, 1))
+        cid2 = f"{nid2}::d{i + 1}"
+        c.components[cid2] = Component(cid2, nid2, "Dieu", None, str(i + 1), "Tiêu đề đủ dài cho bẫy", 0)
+        eid2 = f"{nid2}::Dieu {i + 1}@2024-01-01"
+        c.expressions[eid2] = Expression(eid2, cid2, _noi_dung(i), date(2024, 1, 1), None)
+        payload[point_id(eid2, 0)] = {"text": _noi_dung(i), "n_parts": 1}
+    c.dung_chi_muc()
+    return c, _Store(payload)
 
 
-class _NeoG7:
-    """Trả `rows` đúng thứ tự được đưa vào — để mô phỏng nguồn đổi thứ tự."""
-
-    def __init__(self, rows, bay_theo_stt=None):
-        self.rows, self.bay = rows, bay_theo_stt or {}
-
-    def run(self, q, **kw):
-        if q is g7_content.SELECT:
-            return list(self.rows)
-        if q is g7_content.BAY_KHAC_VB:
-            return list(self.bay.get(kw["stt"], []))
-        raise AssertionError(f"truy vấn lạ: {q[:40]}")
-
-
-def _g7_sinh(rows, store, n=4):
-    items, _ = g7_content.build(_NeoG7(rows), store, n=n, pool=100)
+def _g7_sinh(c, store, n=4):
+    items, _ = g7_content.build(c, store, n=n, pool=100)
     return [dataclasses.asdict(x) for x in items]
 
 
 def test_g7_khong_phu_thuoc_thu_tu_dau_vao():
-    """Tính chất cốt lõi. Trước khi sửa, `rng.shuffle` chạy thẳng trên thứ tự nguồn
-    trả về, nên nguồn đổi thứ tự là bộ câu đổi — đo thật 87/90 câu lệch."""
-    rows, store = _g7_du_lieu()
-    chuan = _g7_sinh(rows, store)
+    """Sau A1, nguồn phi xác định là THỨ TỰ DUYỆT DICT của `Corpus`. Bộ sinh sắp
+    chuẩn theo `expr_id` trước khi trộn nên phải bất biến với thứ tự chèn."""
+    c0, store = _g7_corpus()
+    chuan = _g7_sinh(c0, store)
     assert chuan, "dữ liệu giả không sinh ra item nào — test không kiểm được gì"
-
-    for lan in range(6):
-        xao = list(rows)
-        random.Random(lan).shuffle(xao)
-        assert _g7_sinh(xao, store) == chuan, f"lệch khi nguồn đảo thứ tự (lần {lan})"
-    assert _g7_sinh(list(reversed(rows)), store) == chuan
+    for lan in range(5):
+        c2, store2 = _g7_corpus(xao_id=lan)
+        assert _g7_sinh(c2, store2) == chuan, f"lệch khi đổi thứ tự chèn (lần {lan})"
 
 
 def test_g7_dang_cau_khong_phu_thuoc_thu_tu():
-    """Dạng câu (`lookup`/`situation`), persona và khuôn đều gán theo vị trí vòng lặp
-    — chính là 14–16 câu lệch đã đo. Sắp chuẩn trước khi trộn là cái chốt cho cả ba."""
-    rows, store = _g7_du_lieu()
+    c0, store = _g7_corpus()
     chuan = [(x["question_form"], x["persona"], x["question_template"])
-             for x in _g7_sinh(rows, store)]
+             for x in _g7_sinh(c0, store)]
+    c2, store2 = _g7_corpus(xao_id=99)
     dao = [(x["question_form"], x["persona"], x["question_template"])
-           for x in _g7_sinh(list(reversed(rows)), store)]
+           for x in _g7_sinh(c2, store2)]
     assert dao == chuan
 
 
-def test_g7_bay_khong_phu_thuoc_thu_tu_nguon_tra_ve():
-    """Bẫy cross-norm — 81/90 câu lệch trước khi sửa. Bẫy là đầu vào của nhãn triage
-    `retriever_nham`, nên bẫy trôi thì hai lần chấm không so được với nhau."""
-    rows, store = _g7_du_lieu()
-    bay = {r["stt"]: [{"ex": f"khac{i}::Dieu {i + 1}@2024-01-01"}]
-           for i, r in enumerate(rows)}
-    a = [x["distractor_ids"] for x in
-         [dataclasses.asdict(x) for x in
-          g7_content.build(_NeoG7(rows, bay), store, n=4, pool=100)[0]]]
-    b = [x["distractor_ids"] for x in
-         [dataclasses.asdict(x) for x in
-          g7_content.build(_NeoG7(list(reversed(rows)), bay), store, n=4, pool=100)[0]]]
-    assert a == b and any(a), "bẫy trống -> test không kiểm được gì"
-
-
-def test_g7_cypher_sap_xep_xac_dinh():
-    """Phần thứ tự nằm TRONG Cypher không mô phỏng được bằng nguồn giả — kiểm bằng
-    chính câu truy vấn. Thô, nhưng bắt được đúng ca đã xảy ra: `LIMIT` không kèm
-    `ORDER BY`."""
-    bay = g7_content.BAY_KHAC_VB
-    assert "ORDER BY" in bay and bay.index("ORDER BY") < bay.index("LIMIT"), (
-        "BAY_KHAC_VB có LIMIT mà không ORDER BY -> Neo4j trả hai hàng bất kỳ")
-    sel = g7_content.SELECT
-    assert "ORDER BY n.ngay_hieu_luc DESC, e.expr_id" in sel, (
-        "thiếu khoá phụ: hàng nghìn văn bản chung ngày hiệu lực, LIMIT $pool sẽ cắt "
-        "vào giữa khối bằng điểm và TẬP ứng viên đổi giữa hai lần chạy")
-    assert "ORDER BY ex" in sel, "subquery anh em thiếu ORDER BY trước collect"
+def test_g7_bay_xac_dinh_va_du():
+    """Bẫy (anh em + cross-norm) là đầu vào của nhãn `retriever_nham` — phải có, và
+    phải y hệt giữa hai lần dựng."""
+    c0, store = _g7_corpus()
+    a = [x["distractor_ids"] for x in _g7_sinh(c0, store)]
+    c2, store2 = _g7_corpus(xao_id=7)
+    b = [x["distractor_ids"] for x in _g7_sinh(c2, store2)]
+    assert a == b and all(a), "bẫy trống hoặc trôi"
 
 
 # ── G8 ──────────────────────────────────────────────────────────────────────
-class _NeoG8:
-    def __init__(self, so_vb: int = 400):
-        self.mau = [{"so_hieu": f"{i % 90 + 1}/{2015 + i % 11}/NĐ-CP",
-                     "norm_id": f"n{i}", "hl": date(2015 + i % 11, 6, 1)}
-                    for i in range(so_vb)]
-
-    def run(self, q, **kw):
-        if q is g8_unanswerable.MAU_SO_HIEU:
-            return list(self.mau)
-        if q is g8_unanswerable.DIEU_CUA_VB:
-            return [{"ds": [str(x) for x in range(1, 18)]}]
-        if q is g8_unanswerable.TON_TAI:
-            return [{"c": 0}]                     # số bịa ra không trùng văn bản thật
-        raise AssertionError(f"truy vấn lạ: {q[:40]}")
+def _g8_corpus(so_vb: int = 400):
+    from datetime import date
+    from framework.schema import Component, Corpus, CorpusMeta, Norm
+    c = Corpus(meta=CorpusMeta(ten="thu", theo_doi_hieu_luc=True))
+    for i in range(so_vb):
+        nid = f"n{i}"
+        c.norms[nid] = Norm(nid, f"{i % 90 + 1}/{2015 + i % 11}/NĐ-CP",
+                            ngay_hieu_luc=date(2015 + i % 11, 6, 1))
+        for so in range(1, 18):
+            cid = f"{nid}::d{so}"
+            c.components[cid] = Component(cid, nid, "Dieu", None, str(so), f"Điều {so}", so)
+    c.dung_chi_muc()
+    return c
 
 
 def test_g8_khong_con_cau_trung():
     """Lỗi đã sửa: `NGOAI_PHAM_VI` có 5 chủ đề nhưng quota (d) ở n=25 là 7, vòng lặp
     quay vòng -> G8-0003 ≡ G8-0020 và G8-0004 ≡ G8-0024."""
-    items, _ = g8_unanswerable.build(_NeoG8(), store=None, n=25)
+    items, _ = g8_unanswerable.build(_g8_corpus(), store=None, n=25)
     cau = [x.user_input for x in items]
     assert len(set(cau)) == len(cau), \
         f"còn {len(cau) - len(set(cau))} câu trùng: {[c for c in cau if cau.count(c) > 1][:3]}"
@@ -181,12 +163,12 @@ def test_g8_khong_con_cau_trung():
 
 def test_g8_van_du_quota():
     """Chặn trùng không được đổi lại bằng việc thiếu câu."""
-    items, _ = g8_unanswerable.build(_NeoG8(), store=None, n=25)
+    items, _ = g8_unanswerable.build(_g8_corpus(), store=None, n=25)
     assert len(items) == 25
 
 
 def test_g8_moi_chu_de_ngoai_pham_vi_dung_dung_mot_lan():
-    items, _ = g8_unanswerable.build(_NeoG8(), store=None, n=25)
+    items, _ = g8_unanswerable.build(_g8_corpus(), store=None, n=25)
     cd = [x.reference_fields["chu_de_ngoai_pham_vi"]
           for x in items if x.cong_thuc == "d"]
     assert len(set(cd)) == len(cd)
@@ -194,7 +176,7 @@ def test_g8_moi_chu_de_ngoai_pham_vi_dung_dung_mot_lan():
 
 
 def test_g8_du_bon_cong_thuc():
-    items, _ = g8_unanswerable.build(_NeoG8(), store=None, n=25)
+    items, _ = g8_unanswerable.build(_g8_corpus(), store=None, n=25)
     import collections
     dem = collections.Counter(x.cong_thuc for x in items)
     assert set(dem) == {"a", "b", "c", "d"}
@@ -205,7 +187,7 @@ def test_g8_du_bon_cong_thuc():
 def test_g8_khong_bao_gio_trung_o_moi_co_bo_de(n):
     """Quota (d) tăng theo n; ở n=80 nó vượt số chủ đề có sẵn và phải chuyển phần dư
     sang a/b/c chứ không lặp lại chủ đề."""
-    items, _ = g8_unanswerable.build(_NeoG8(), store=None, n=n)
+    items, _ = g8_unanswerable.build(_g8_corpus(), store=None, n=n)
     cau = [x.user_input for x in items]
     assert len(set(cau)) == len(cau), f"n={n}: có câu trùng"
     assert len(items) == n, f"n={n}: chỉ sinh {len(items)}"

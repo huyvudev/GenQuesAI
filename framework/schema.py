@@ -197,8 +197,12 @@ def nap(loader: CorpusLoader) -> Corpus:
     for e in loader.expressions():
         c.expressions[e.expression_id] = e
     c.quan_he = list(loader.quan_he())
-    c.chuyen_tiep = list(loader.chuyen_tiep())
-    for ch in loader.chunks():
+    # `CorpusLoader` là Protocol, KHÔNG phải lớp cơ sở — thân hàm mặc định viết trong
+    # đó không được kế thừa. Loader chỉ khai `norms/components/expressions/quan_he`
+    # (đúng hợp đồng tối thiểu) sẽ thiếu hai phương thức tuỳ chọn này, và `nap()` nổ
+    # `AttributeError` giữa chừng. Đọc mềm để hợp đồng tối thiểu thật sự là tối thiểu.
+    c.chuyen_tiep = list(getattr(loader, "chuyen_tiep", lambda: ())())
+    for ch in getattr(loader, "chunks", lambda: ())():
         c.chunks[ch.chunk_id] = ch
     c.dung_chi_muc()
     return c

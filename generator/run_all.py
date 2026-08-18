@@ -17,7 +17,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .common import open_neo4j, open_qdrant, setup_stdout, verify_point_id
+from .common import nap_corpus, open_qdrant, setup_stdout, verify_point_id
 from . import (g1_replaces, g2_temporal, g3_chain, g4_history,
                g5_transition, g6_conflict, g7_content, g8_unanswerable)
 from .run_g7 import chay_paraphrase
@@ -43,9 +43,12 @@ def main() -> int:
     ap.add_argument("--out", default="out/eval_set.jsonl")
     ap.add_argument("--paraphrase", default=None, help="'all' hoặc số câu mỗi nhóm")
     ap.add_argument("--chi", default=None, help="chỉ chạy các nhóm này, vd 'G3,G5'")
+    # A1: bộ sinh đọc `Corpus`. Mặc định nạp từ Neo4j (qua Neo4jLoader); truyền
+    # --corpus <thư mục JSONL> thì chạy KHÔNG cần Neo4j — đó là toàn bộ ý nghĩa của A1.
+    ap.add_argument("--corpus", default=None, help="thư mục corpus JSONL (bỏ = Neo4j)")
     args = ap.parse_args()
 
-    neo, store = open_neo4j(), open_qdrant()
+    corpus, store = nap_corpus(args.corpus), open_qdrant()
     snapshot = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     khop, kiem = verify_point_id(store)
@@ -61,7 +64,7 @@ def main() -> int:
         if chon and ma not in chon:
             continue
         print(f"\n{'='*66}\n{ma} — quota {quota}")
-        items, stat = mod.build(neo, store, n=quota, **kw)
+        items, stat = mod.build(corpus, store, n=quota, **kw)
         for k, v in stat.items():
             print(f"  {k:28} {v}")
 
@@ -101,7 +104,7 @@ def main() -> int:
     sit = sum(1 for x in tat_ca if getattr(x, "question_form", "") == "situation")
     print(f"  situation          {sit} = {100.0*sit/max(len(tat_ca),1):.0f}%"
           f"  (mục tiêu ≥55%)")
-    neo.close(); store.close()
+    store.close()
     return 0
 
 

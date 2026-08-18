@@ -50,37 +50,63 @@ def tieu_de_hop_le(td: str) -> bool:
         return False
     return not _TD_XAU.search(td)
 
-SELECT = """
-MATCH (n:Norm)-[:HAS_PART*]->(d:Component)-[:HAS_VERSION]->(e:Expression)
-WHERE d.loai = 'Dieu'
-  AND e.hieu_luc_den IS NULL
-  AND n.so_hieu IS NOT NULL AND n.ngay_hieu_luc IS NOT NULL
-  AND d.tieu_de IS NOT NULL AND size(d.tieu_de) > 8
-  AND NONE(k IN $loai_tru WHERE toLower(d.tieu_de) CONTAINS k)
-// anh em gần (§5.3). order_key đánh số trên MỌI Component (gồm Khoản/Điểm) nên hai
-// Điều liền nhau cách xa về order_key -> lọc theo so_thu_tu mới đúng "liền kề".
-// `ORDER BY ex` trước `collect` là BẮT BUỘC: không có nó thì "hai anh em đầu tiên"
-// là hai hàng bất kỳ Neo4j trả về, và bẫy đổi giữa hai lần sinh.
-CALL (n, d) {
-  MATCH (n)-[:HAS_PART*]->(k:Component)-[:HAS_VERSION]->(ke:Expression)
-  WHERE k.loai = 'Dieu' AND k.comp_id <> d.comp_id AND ke.hieu_luc_den IS NULL
-  WITH DISTINCT ke.expr_id AS ex
-  ORDER BY ex
-  RETURN collect(ex)[0..2] AS ke_expr
-}
-// Bẫy cross-norm (cùng số Điều, văn bản khác) KHÔNG tính ở đây: nó quét toàn đồ thị
-// cho MỖI ứng viên -> query treo. Tính riêng bằng BAY_KHAC_VB, chỉ cho item đã chọn.
-RETURN n.norm_id AS norm_id, n.so_hieu AS so_hieu, n.tieu_de AS norm_tieu_de,
-       n.linh_vuc AS linh_vuc, n.loai_vb AS loai_vb,
-       d.comp_id AS comp_id, d.so_thu_tu AS stt, d.tieu_de AS dieu_tieu_de,
-       d.duong_dan AS duong_dan, e.expr_id AS expr_id,
-       ke_expr AS anh_em
-// Khoá phụ `expr_id` là bắt buộc, không phải làm cho đẹp: hàng nghìn văn bản dùng
-// chung một `ngay_hieu_luc`, nên chỉ ORDER BY ngày thì `LIMIT $pool` cắt vào giữa
-// một khối bằng điểm và TẬP ứng viên đổi giữa hai lần chạy.
-ORDER BY n.ngay_hieu_luc DESC, e.expr_id
-LIMIT $pool
-"""
+def ung_vien(c, pool: int, loai_tru: list[str]) -> list[dict]:
+    """Bản duyệt `Corpus` của SELECT cũ (A1).
+
+    Mọi Điều còn hiệu lực, tiêu đề sạch, của văn bản có số hiệu + ngày hiệu lực.
+    Anh em gần: 2 Điều khác cùng văn bản, còn hiệu lực — sắp theo expr_id cho xác
+    định (bài học `collect()[0..2]` không sắp của bản Cypher).
+    """
+    from framework import truy_van as tv
+
+    ra: list[dict] = []
+    for n in c.norms.values():
+        if not (n.so_hieu and n.ngay_hieu_luc):
+            continue
+        dieu_mo: list[tuple] = []           # (Component, Expression) còn hiệu lực
+        for d in tv.moi_thanh_phan(c, n.norm_id):
+            if d.loai != "Dieu":
+                continue
+            for e in tv.cac_ban(c, d.component_id):
+                if e.hieu_luc_den is None:
+                    dieu_mo.append((d, e))
+        for d, e in dieu_mo:
+            td = d.tieu_de or ""
+            if len(td) <= 8 or any(x in td.lower() for x in loai_tru):
+                continue
+            anh_em = sorted(e2.expression_id for d2, e2 in dieu_mo
+                            if d2.component_id != d.component_id)[:2]
+            ra.append({
+                "norm_id": n.norm_id, "so_hieu": n.so_hieu, "norm_tieu_de": n.tieu_de,
+                "linh_vuc": [], "loai_vb": n.loai_vb,
+                "comp_id": d.component_id, "stt": d.so_thu_tu, "dieu_tieu_de": td,
+                "duong_dan": f"Dieu {d.so_thu_tu}", "expr_id": e.expression_id,
+                "anh_em": anh_em, "_hl": n.ngay_hieu_luc,
+            })
+    ra.sort(key=lambda r: (-r["_hl"].toordinal(), r["expr_id"]))
+    return ra[:pool]
+
+
+def bay_khac_vb(c, norm_id: str, stt) -> list[str]:
+    """Bẫy cross-norm: Điều CÙNG SỐ ở văn bản khác, còn hiệu lực. Lấy 2, xác định.
+
+    Bản Cypher lọc `n2.linh_vuc = $linh_vuc` nhưng `linh_vuc` là [] ở TOÀN BỘ Norm
+    (đo 2026-08-06) nên điều kiện luôn đúng — thực chất là "văn bản bất kỳ". Giữ đúng
+    hành vi đó.
+    """
+    from framework import truy_van as tv
+    ra = []
+    for n2 in c.norms.values():
+        if n2.norm_id == norm_id:
+            continue
+        for d in tv.moi_thanh_phan(c, n2.norm_id):
+            if d.loai != "Dieu" or d.so_thu_tu != stt:
+                continue
+            for e in tv.cac_ban(c, d.component_id):
+                if e.hieu_luc_den is None:
+                    ra.append(e.expression_id)
+    return sorted(ra)[:2]
+
 
 # `lookup` — người hỏi biết số hiệu. Đo metadata + retrieval có mồi từ khoá.
 TPL_LOOKUP = [
@@ -106,12 +132,7 @@ TPL_SITUATION = [
 # LƯU Ý: `linh_vuc` là [] ở TOÀN BỘ 66.368 Norm (đo 2026-08-06) nên điều kiện dưới
 # luôn đúng — thực tế bẫy là "cùng số Điều, văn bản bất kỳ", vẫn hợp lệ theo §5.3
 # nhưng KHÔNG được thu hẹp theo lĩnh vực như tên gọi gợi ý.
-BAY_KHAC_VB = """
-MATCH (n2:Norm)-[:HAS_PART]->(k2:Component)-[:HAS_VERSION]->(e2:Expression)
-WHERE n2.linh_vuc = $linh_vuc AND n2.norm_id <> $norm_id
-  AND k2.loai = 'Dieu' AND k2.so_thu_tu = $stt AND e2.hieu_luc_den IS NULL
-RETURN DISTINCT e2.expr_id AS ex ORDER BY ex LIMIT 2
-"""
+
 
 
 @dataclass
@@ -140,10 +161,10 @@ class Item:
 PERSONA_SIT = ["chu_ho_kinh_doanh", "nguoi_dan", "luat_su"]
 
 
-def build(neo, store, n: int = 90, pool: int = 4000, ty_le_situation: float = 0.6,
+def build(c, store, n: int = 90, pool: int = 4000, ty_le_situation: float = 0.6,
           seed: int = 20260806) -> tuple[list[Item], dict]:
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool, loai_tru=LOAI_TRU)
+    rows = ung_vien(c, pool, LOAI_TRU)
 
     # SẮP CHUẨN trước khi trộn. `shuffle` cho hoán vị phụ thuộc thứ tự ĐẦU VÀO, nên
     # nếu nguồn trả về thứ tự khác thì cùng seed vẫn ra bộ câu khác. Đo thật trên hai
@@ -215,12 +236,7 @@ def build(neo, store, n: int = 90, pool: int = 4000, ty_le_situation: float = 0.
 
         # Bẫy: Điều khác cùng văn bản + cùng số Điều ở văn bản khác cùng lĩnh vực.
         ex_bay = list(r["anh_em"] or [])
-        try:
-            ex_bay += [x["ex"] for x in neo.run(
-                BAY_KHAC_VB, norm_id=r["norm_id"], linh_vuc=r["linh_vuc"],
-                stt=r["stt"])]
-        except Exception:
-            pass                                  # thiếu bẫy không làm hỏng item
+        ex_bay += bay_khac_vb(c, r["norm_id"], r["stt"])
         bay = []
         for ex in dict.fromkeys(ex_bay):
             s2, _ = chunk_span(store, ex, 0)

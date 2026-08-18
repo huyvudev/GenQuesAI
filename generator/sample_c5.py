@@ -39,11 +39,6 @@ CAU_HOI_KIEM = {
           "Nếu thực tế có văn bản/điều khoản tương ứng thì đánh Sai.",
 }
 
-URL_NGUON = """
-UNWIND $ids AS nid
-MATCH (n:Norm {norm_id: nid})
-RETURN nid AS norm_id, n.nguon_url AS url, n.tieu_de AS tieu_de, n.so_hieu AS so_hieu
-"""
 # G8(b)/(c) chỉ có SỐ HIỆU, không có norm_id trong bộ đề — tra riêng.
 URL_THEO_SO_HIEU = """
 UNWIND $shs AS sh
@@ -146,16 +141,20 @@ def rut_mau(items: list[dict], tong: int = 80, seed: int = 20260807) -> list[dic
     return mau
 
 
-def chuan_bi(items: list[dict], neo, tong: int = 80) -> list[dict]:
-    """Rút mẫu + gắn câu hỏi kiểm + link văn bản gốc."""
+def chuan_bi(items: list[dict], c, tong: int = 80) -> list[dict]:
+    """Rút mẫu + gắn câu hỏi kiểm + link văn bản gốc. `c` là `Corpus` (A1)."""
     mau = rut_mau(items, tong)
     ids = sorted({x for it in mau for x in _norm_ids(it)})
-    thuong = [x for x in ids if not x.startswith("so_hieu:")]
-    theo_sh = [x[len("so_hieu:"):] for x in ids if x.startswith("so_hieu:")]
-    thong_tin = {r["norm_id"]: r for r in neo.run(URL_NGUON, ids=thuong)} if thuong else {}
-    if theo_sh:
-        thong_tin.update({r["norm_id"]: r
-                          for r in neo.run(URL_THEO_SO_HIEU, shs=theo_sh)})
+    thong_tin: dict[str, dict] = {}
+    for x in ids:
+        if x.startswith("so_hieu:"):
+            sh = x[len("so_hieu:"):]
+            n = next((n for n in c.norms.values() if n.so_hieu == sh), None)
+        else:
+            n = c.norms.get(x)
+        if n is not None:
+            thong_tin[x] = {"so_hieu": n.so_hieu, "tieu_de": n.tieu_de,
+                            "url": n.nguon_url}
 
     for it in mau:
         it["c5_cau_hoi_kiem"] = _mo_ta_kiem(it)

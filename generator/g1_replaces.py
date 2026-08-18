@@ -26,30 +26,56 @@ MAX_MOI_LAP = 2
 # hiệu, tức span thật sự là điều khoản bãi bỏ chứ không phải chỗ dẫn chiếu tình cờ.
 MIN_DIEM_BANG_CHUNG = 3
 
-# Chỉ lấy văn bản bị thay bởi ĐÚNG MỘT văn bản -> đáp án đơn trị, chấm exact-match
-# được. Ca bị nhiều văn bản cùng thay là câu hỏi dạng danh sách, thuộc về G4'.
-SELECT = """
-MATCH (moi:Norm)-[:REPLACES]->(cu:Norm)
-WHERE moi.ngay_hieu_luc IS NOT NULL AND cu.ngay_hieu_luc IS NOT NULL
-  AND moi.ngay_hieu_luc > cu.ngay_hieu_luc
-  AND moi.so_hieu IS NOT NULL AND cu.so_hieu IS NOT NULL
-WITH cu, collect(DISTINCT moi) AS ds
-WHERE size(ds) = 1
-WITH cu, ds[0] AS moi
-// anh em gần: văn bản khác cũng bị chính `moi` thay thế -> bẫy tự nhiên (§5.3)
-CALL (moi, cu) {
-  MATCH (moi)-[:REPLACES]->(anh_em:Norm)
-  WHERE anh_em.norm_id <> cu.norm_id AND anh_em.so_hieu IS NOT NULL
-  RETURN collect(anh_em.so_hieu)[0..3] AS anh_em_ids
-}
-RETURN cu.norm_id AS cu_id, cu.so_hieu AS cu_so_hieu, cu.tieu_de AS cu_tieu_de,
-       cu.loai_vb AS cu_loai, cu.ngay_hieu_luc AS cu_hieu_luc,
-       moi.norm_id AS moi_id, moi.so_hieu AS moi_so_hieu, moi.tieu_de AS moi_tieu_de,
-       moi.ngay_hieu_luc AS moi_hieu_luc,
-       anh_em_ids AS anh_em
-ORDER BY size(anh_em_ids) DESC, moi.ngay_hieu_luc DESC
-LIMIT $pool
-"""
+def ung_vien(c, pool: int) -> list[dict]:
+    """Bản duyệt `Corpus` của khối Cypher cũ (A1). Trả cùng khuôn dict như `neo.run`.
+
+    Cypher gốc, giữ lại để đối chiếu khi đọc:
+
+        MATCH (moi:Norm)-[:REPLACES]->(cu:Norm)
+        WHERE moi.ngay_hieu_luc > cu.ngay_hieu_luc AND cả hai có so_hieu
+        WITH cu, collect(DISTINCT moi) AS ds  WHERE size(ds) = 1
+        CALL { anh em: văn bản khác cũng bị `moi` thay thế, lấy 3 }
+        ORDER BY size(anh_em) DESC, moi.ngay_hieu_luc DESC  LIMIT $pool
+
+    Bốn chỗ phải giữ nguyên ngữ nghĩa, mỗi chỗ một lý do:
+
+    · **chỉ cạnh trực tiếp** (`nguon="canh"`). `Corpus` gộp cạnh REPLACES với
+      `Action{loai:'ThayThe'}` thành cùng một enum; lấy cả hai thì G1 nuốt tập ứng
+      viên của G4′. Xem `NguonQuanHe`.
+    · **lọc `moi` mới hơn `cu` TRƯỚC khi đòi duy nhất.** Đảo thứ tự thì 24 cạnh ngược
+      chiều + 46 cạnh cùng ngày (đã đo) làm hỏng điều kiện `size(ds) = 1`.
+    · **`size(ds) = 1`** — đáp án phải đơn trị mới chấm exact-match được. Ca bị nhiều
+      văn bản cùng thay là câu hỏi danh sách, thuộc về G4′.
+    · **sắp xếp xác định.** Cypher `ORDER BY ... DESC` có hàng loạt ca bằng điểm và
+      Neo4j không hứa thứ tự trong nhóm bằng điểm; ở đây thêm khoá phụ `cu_id` để
+      `LIMIT pool` cắt vào cùng một chỗ mọi lần chạy.
+    """
+    from framework import truy_van as tv
+
+    theo_cu: list[dict] = []
+    for cu in c.norms.values():
+        if not (cu.so_hieu and cu.ngay_hieu_luc):
+            continue
+        ds = [x for x in tv.thay_the_boi(c, cu.norm_id, nguon="canh")
+              if (m := c.norms.get(x)) and m.so_hieu and m.ngay_hieu_luc
+              and m.ngay_hieu_luc > cu.ngay_hieu_luc]
+        if len(ds) != 1:
+            continue
+        moi = c.norms[ds[0]]
+        anh_em = sorted(
+            c.norms[x].so_hieu
+            for x in tv.da_thay_the(c, moi.norm_id, nguon="canh")
+            if x != cu.norm_id and (a := c.norms.get(x)) and a.so_hieu)[:3]
+        theo_cu.append({
+            "cu_id": cu.norm_id, "cu_so_hieu": cu.so_hieu, "cu_tieu_de": cu.tieu_de,
+            "cu_loai": cu.loai_vb, "cu_hieu_luc": cu.ngay_hieu_luc,
+            "moi_id": moi.norm_id, "moi_so_hieu": moi.so_hieu,
+            "moi_tieu_de": moi.tieu_de, "moi_hieu_luc": moi.ngay_hieu_luc,
+            "anh_em": anh_em,
+        })
+    theo_cu.sort(key=lambda r: (-len(r["anh_em"]),
+                                -r["moi_hieu_luc"].toordinal(), r["cu_id"]))
+    return theo_cu[:pool]
 
 # Khuôn câu hỏi cố định — bất biến I1. Đa dạng hoá bề mặt bằng cách chọn khuôn,
 # KHÔNG bằng LLM: G1 toàn dạng `lookup` nên không đi qua paraphrase().
@@ -84,12 +110,16 @@ class Item:
     human_verified: bool = False
 
 
-def build(neo, store, n: int = 50, pool: int = 600, seed: int = 20260806) -> tuple[list[Item], dict]:
-    """Sinh tối đa `n` item G1. Trả (items, thống kê cổng)."""
+def build(c, store, n: int = 50, pool: int = 600, seed: int = 20260806) -> tuple[list[Item], dict]:
+    """Sinh tối đa `n` item G1 từ `Corpus`. Trả (items, thống kê cổng).
+
+    A1: tham số đầu là `framework.schema.Corpus`, không còn là client Neo4j. `store`
+    (Qdrant) vẫn cần cho gold span — đó là việc của A2, không phải A1.
+    """
     rng = random.Random(seed)
-    rows = neo.run(SELECT, pool=pool)
+    rows = ung_vien(c, pool)
     rng.shuffle(rows)
-    nhap_nhang = khoa_nhap_nhang(neo)
+    nhap_nhang = khoa_nhap_nhang(c)
 
     items: list[Item] = []
     dem_moi: dict[str, int] = {}
