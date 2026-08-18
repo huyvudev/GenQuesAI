@@ -112,26 +112,31 @@ Tất cả đều là lỗi **không có triệu chứng** ở mọi cổng C1�
 | ✅ **Ký tự nhìn giống hệt** | `С` Kirin, `–` en-dash trong số hiệu → hai chuỗi hiện y hệt mà `==` trả False |
 | ✅ **G5 gold span trỏ nhầm Điều** | `CONTAINS 'Điều ' + stt` khớp tiền tố; 77% ứng viên có >1 Điều khớp, 7/30 câu đã trỏ sai |
 | ✅ **G3 hai câu giống hệt, hai đáp án khác** | hệ trả lời kiểu gì cũng trượt một câu |
-| ⬜ **62% gold span không có nội dung trong đồ thị** | xem dưới — chặn A1 |
+| ✅ **~~62% gold span không có nội dung~~** | **kết luận SAI của tôi** — xem dưới |
 
-### Chặn A1: nội dung chỉ nằm trong index
+### Bài học: một kết luận sai, và vì sao nó trông thuyết phục
 
-`Expression.text` trong Neo4j chứa văn bản của **riêng node đó** — với văn bản QPPL
-thường chỉ là câu dẫn:
+Tôi từng ghi ở đây rằng 62% gold span không có nội dung trong đồ thị, và kết luận A1 bị
+chặn. **Sai.** Nội dung văn bản QPPL nằm ở LÁ:
 
 ```
-Expression   54 ký tự   "Bãi bỏ toàn bộ các văn bản quy phạm pháp luật sau đây:"
-chunk       890 ký tự   câu dẫn + trọn danh sách văn bản bị bãi bỏ
+Khoan   939.964 node    0% rỗng
+Diem    736.973 node    0% rỗng
+Dieu    346.695 node   69% rỗng   ← Điều có Khoản con thì không mang text riêng
+Chuong   45.027 node  100% rỗng   ← vỏ chứa, đúng thiết kế
 ```
 
-14% Expression rỗng hoàn toàn, và với **gold span thì 62% không có nội dung nào trong đồ
-thị** — nó sống trong Qdrant.
+Hai lỗi của tôi cộng lại tạo ra ảo giác đó:
 
-Bộ sinh hiện tại đọc Qdrant nên không thấy. Bộ sinh sau A1 đọc `Corpus` sẽ mù đúng chừng
-ấy, và bộ lọc độ dài của G7 (300–2500 ký tự) sẽ loại nhầm gần hết ứng viên. **A1 không
-thể chỉ đổi nguồn truy vấn**: hoặc ingest ghi text vào đồ thị, hoặc `Corpus` nạp thêm
-`chunks` (schema đã chừa chỗ) và bộ sinh lùi về đó khi text rỗng.
+1. `trich_fixture` xuất Component chứa expression mà **không xuất cây con** → fixture
+   nhìn như đồ thị rỗng, trong khi nội dung nằm ngay dưới một bậc
+2. phép kiểm ghép cây theo bản **hiện hành**, trong khi gold span của G2 là bản **lịch
+   sử** đã đóng → 26% ca còn lại ra chuỗi rỗng
 
-`truy_van.noi_dung_cay()` ghép node + cả cây con — đúng thứ A1 cần.
-`test_do_thi_co_noi_dung_de_A1_doc_duoc` chốt con số 62%; nó phải **đi xuống**, tăng là
-hồi quy.
+Sửa cả hai → **0/375 thiếu nội dung**. A1 không bị chặn bởi chuyện này; nó chỉ phải ghép
+cây theo đúng mốc — `truy_van.noi_dung_cay(c, comp, moc=...)` — thay vì đọc
+`Expression.text` của một node.
+
+Đáng ghi lại vì kết luận sai đó **trông rất thuyết phục**: có số đo, có ví dụ cụ thể,
+khớp với một giả thuyết hợp lý. Thứ thiếu là kiểm chéo — chỉ một truy vấn đếm text rỗng
+theo `loai` là đủ lật lại.

@@ -107,14 +107,26 @@ MATCH (c)-[:HAS_VERSION]->(e:Expression)
 RETURN DISTINCT e.expr_id AS id, c.comp_id AS comp_id, e.text AS text,
        e.hieu_luc_tu AS tu, e.hieu_luc_den AS den
 """
+# Component chứa expr được trích, KÈM TOÀN BỘ CÂY CON.
+#
+# Cây con là bắt buộc, không phải cho đầy đủ: văn bản QPPL để nội dung ở LÁ. Đo trên
+# đồ thị thật — Khoản 939.964 node, 0% rỗng; Điểm 736.973 node, 0% rỗng; còn Điều thì
+# 69% rỗng vì Điều có Khoản con không mang text riêng. Xuất mỗi Điều mà bỏ Khoản thì
+# fixture nhìn như "đồ thị không có nội dung", trong khi nội dung nằm ngay dưới một
+# bậc. Chính chỗ này từng khiến tôi báo nhầm "62% gold span không có text trong đồ
+# thị" — đó là lỗi của bộ xuất, không phải của dữ liệu.
 Q_COMP_CUA_EXPR = """
 UNWIND $exprs AS eid
 MATCH (n:Norm)-[:HAS_PART*]->(c:Component)-[:HAS_VERSION]->(:Expression {expr_id: eid})
 WITH DISTINCT n, c
-OPTIONAL MATCH (p:Component)-[:HAS_PART]->(c)
-RETURN c.comp_id AS id, n.norm_id AS norm_id, c.loai AS loai,
-       p.comp_id AS parent, c.so_thu_tu AS stt, c.tieu_de AS tieu_de,
-       c.order_key AS thu_tu
+OPTIONAL MATCH (c)-[:HAS_PART*]->(con:Component)
+WITH n, collect(DISTINCT c) + collect(DISTINCT con) AS ds
+UNWIND ds AS x
+WITH DISTINCT n, x WHERE x IS NOT NULL
+OPTIONAL MATCH (p:Component)-[:HAS_PART]->(x)
+RETURN x.comp_id AS id, n.norm_id AS norm_id, x.loai AS loai,
+       p.comp_id AS parent, x.so_thu_tu AS stt, x.tieu_de AS tieu_de,
+       x.order_key AS thu_tu
 """
 Q_EXPR_CUA_CAY = """
 UNWIND $ids AS cid

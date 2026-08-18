@@ -344,7 +344,11 @@ def test_doan_trich_nam_trong_expression(corpus, record_property):
         if e is None:
             lech.append(i)
             continue
-        day_du = tv.noi_dung_cay(corpus, e.component_id)
+        # Theo ĐÚNG mốc của expression được trích, không phải "hiện hành": gold span
+        # của G2 là bản LỊCH SỬ đã đóng, và bản hiện hành của cùng Component là văn
+        # bản khác hẳn. Lấy nhầm mốc thì 26% ca ra chuỗi rỗng.
+        day_du = (tv.noi_dung_cay(corpus, e.component_id, moc=e.hieu_luc_tu)
+                  or tv.noi_dung_cay(corpus, e.component_id))
         if not day_du.strip():
             # Đồ thị KHÔNG có nội dung, dù index có. Không kiểm được containment ở
             # đây — và bản thân nó là phát hiện riêng, đo ở test kế bên.
@@ -393,35 +397,14 @@ def test_moi_loai_su_kien_deu_co_bo_kiem():
     assert not thieu, f"loại sự kiện chưa có bộ kiểm: {sorted(thieu)}"
 
 
-# CHỐT MỘT LỖ HỔNG ĐÃ BIẾT, không phải ngưỡng chấp nhận được.
-#
-# 62% gold span có nội dung CHỈ NẰM TRONG INDEX Qdrant, không có trong đồ thị. Bộ sinh
-# hiện tại đọc Qdrant nên không thấy; bộ sinh SAU A1 đọc `Corpus` sẽ mù đúng chừng ấy.
-# Con số này phải ĐI XUỐNG — hạ hằng số mỗi lần ingest ghi thêm text vào đồ thị, hoặc
-# về 0 khi `Corpus` nạp cả `chunks`. Tăng lên là hồi quy.
-NGUONG_KHONG_CO_TEXT = 0.63
-
-
-def test_do_thi_co_noi_dung_de_A1_doc_duoc(corpus, bo_de, record_property):
-    """Bao nhiêu gold span mà đồ thị không có nội dung tương ứng?
-
-    Bộ sinh HIỆN TẠI đọc text từ Qdrant nên không thấy vấn đề. Bộ sinh SAU A1 đọc
-    `Corpus` — và `Corpus` dựng từ Neo4j thì 14% Expression có `text` rỗng, kèm cây
-    con rỗng. Nghĩa là A1 không thể chỉ đổi nguồn truy vấn: hoặc ingest phải ghi text
-    vào đồ thị, hoặc `Corpus` phải nạp thêm `chunks` (schema đã chừa chỗ) và bộ sinh
-    lùi về đó khi `Expression.text` rỗng.
-
-    Test này để con số đó không trôi mà không ai biết.
-    """
-    ds = [(r["id"], r["gold_spans"][0]["expr_id"]) for r in bo_de if r.get("gold_spans")]
-    rong = [i for i, eid in ds
-            if (e := corpus.expressions.get(eid)) is None
-            or not tv.noi_dung_cay(corpus, e.component_id).strip()]
-    ty = len(rong) / max(len(ds), 1)
-    record_property("ty_le_khong_co_text", round(ty, 3))
-    assert ty <= NGUONG_KHONG_CO_TEXT, (
-        f"{len(rong)}/{len(ds)} = {ty:.0%} gold span không có nội dung trong đồ thị "
-        f"(ngưỡng {NGUONG_KHONG_CO_TEXT:.0%}) — A1 sẽ mù đúng chừng ấy phần bộ đề.")
+# Không còn chốt "thiếu text trong đồ thị". Con số 62% từng ghi ở đây là SAI, và sai
+# theo cách đáng ghi lại: nội dung văn bản QPPL nằm ở LÁ (Khoản 939.964 node 0% rỗng,
+# Điểm 736.973 node 0% rỗng), còn Điều rỗng 69% vì Điều có Khoản con không mang text
+# riêng. Hai lỗi cộng lại tạo ra ảo giác "đồ thị không có nội dung":
+#   · `trich_fixture` xuất Component chứa expr mà KHÔNG xuất cây con
+#   · phép kiểm ghép cây theo bản HIỆN HÀNH, trong khi gold span của G2 là bản lịch sử
+# Sửa cả hai -> 0/375 thiếu nội dung. A1 KHÔNG bị chặn bởi chuyện này; nó chỉ phải
+# ghép cây theo đúng mốc thay vì đọc `Expression.text` của một node.
 
 
 # Bao nhiêu phần kỳ vọng được phép "không kiểm được vì nguồn không có". Ngưỡng này là
