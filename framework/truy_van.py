@@ -333,6 +333,37 @@ def norm_theo_so_hieu(c: Corpus, so_hieu: str, chuan_hoa=None) -> list[str]:
     return [n.norm_id for n in c.norms.values() if chuan_hoa(n.so_hieu) == dich]
 
 
+def noi_dung_cay(c: Corpus, component_id: str, moc: date | None = None) -> str:
+    """Nội dung ĐẦY ĐỦ của một thành phần: chính nó cộng toàn bộ cây con.
+
+    Bắt buộc phải có, và đây là chỗ A1 dễ hụt nhất. `Expression.text` chỉ chứa văn bản
+    của RIÊNG node đó — với văn bản QPPL thì thường chỉ là CÂU DẪN, còn nội dung thật
+    nằm ở các Khoản/Điểm bên dưới. Đo trên corpus thật:
+
+        Expression  54 ký tự  "Bãi bỏ toàn bộ các văn bản quy phạm pháp luật sau đây:"
+        chunk      890 ký tự  câu dẫn + trọn danh sách văn bản bị bãi bỏ
+
+    Index Qdrant ghép sẵn cả cây khi tạo chunk, nên bộ sinh hiện tại (đọc Qdrant) thấy
+    đủ. Bộ sinh sau A1 đọc `Corpus` sẽ chỉ thấy 54 ký tự kia nếu không ghép — và mọi
+    bộ lọc theo độ dài (`G7` đòi 300–2500 ký tự) sẽ loại nhầm gần hết ứng viên.
+
+    `moc = None` lấy bản hiện hành; có `moc` thì lấy bản có hiệu lực tại mốc đó.
+    """
+    goc = c.components.get(component_id)
+    if goc is None:
+        return ""
+    ds = [goc] + hau_due(c, component_id)
+    ds.sort(key=lambda x: (x.thu_tu, x.component_id))
+    phan = []
+    for x in ds:
+        e = (hieu_luc_tai(c, x.component_id, moc) if moc
+             else (ban_hien_hanh(c, x.component_id) if c.meta.theo_doi_hieu_luc
+                   else next(iter(cac_ban(c, x.component_id)), None)))
+        if e and (t := (e.text or "").strip()):
+            phan.append(t)
+    return "\n".join(phan)
+
+
 def khoa_nhap_nhang(c: Corpus, chuan_hoa=None) -> dict[str, list[str]]:
     """Những khoá số hiệu ứng với NHIỀU HƠN MỘT văn bản.
 

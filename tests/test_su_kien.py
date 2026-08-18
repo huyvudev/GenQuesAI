@@ -91,6 +91,16 @@ def _sh(x: str | None) -> str | None:
     return sh_mod.khoa(x)
 
 
+_cache_nn: dict[int, frozenset] = {}
+
+
+def _nhap_nhang(c) -> frozenset:
+    """Khoá số hiệu ứng với nhiều văn bản — nhớ theo corpus, tính một lần."""
+    if (k := id(c)) not in _cache_nn:
+        _cache_nn[k] = frozenset(tv.khoa_nhap_nhang(c, sh_mod.khoa))
+    return _cache_nn[k]
+
+
 # ── từng loại sự kiện ───────────────────────────────────────────────────────
 def _thay_the_boi(c, s):
     goc = _norm(c, s["norm"])
@@ -135,7 +145,18 @@ def _tac_dong_toi(c, s):
     # không gộp thì danh sách trùng và Set-F1 phạt hệ vì trả lời đúng.
     duoc_sh = {_sh(c.norms[x].so_hieu) for x in duoc if x in c.norms} - {None}
     mong = {_sh(x) for x in s["ky_vong_so_hieu"]} - {None}
-    thua = duoc_sh - mong
+    # Bộ sinh CỐ Ý bỏ khỏi danh sách những số hiệu ứng với nhiều văn bản — câu hỏi
+    # danh sách không phán được hệ trả đúng hay sai phần tử mơ hồ. Nên đồ thị thô trả
+    # về nhiều hơn đáp án là ĐÚNG THIẾT KẾ ở riêng những khoá đó.
+    # Vẫn giữ nguyên sức mạnh của phép kiểm: rò rỉ CAN_CU sẽ kéo vào những văn bản có
+    # khoá DUY NHẤT, và chúng vẫn bị bắt.
+    # Bộ sinh còn gộp theo `số/năm` (`g4_history._khoa_gop`) để dồn các cách ghi khác
+    # nhau của CÙNG một văn bản: `17/2006/TTLT/BLĐTBXH-BTC-BYT` và
+    # `17/2006/TTLT-BLĐTBXH-BTC-BYT` chỉ khác dấu phân cách. Phép kiểm phải mô phỏng
+    # đúng phép gộp đó, nếu không nó báo "DƯ" ở chính thứ bộ sinh cố ý dồn lại.
+    so_nam = {x.split("/")[0] + "/" + x.split("/")[1] for x in mong if x.count("/") >= 2}
+    thua = {x for x in duoc_sh - mong - set(_nhap_nhang(c))
+            if not (x.count("/") >= 2 and x.split("/")[0] + "/" + x.split("/")[1] in so_nam)}
     assert not thua, (
         f"{s['norm']}: DƯ văn bản {sorted(thua)}. Dấu hiệu điển hình của việc đánh rơi "
         f"bộ lọc CAN_CU — 59% quan hệ đã duyệt là căn cứ pháp lý, không phải sửa đổi")
@@ -235,9 +256,20 @@ def _so_dieu_khong_co(c, s):
 
 
 def _nam_ban_hanh(c, s):
+    """G8(c) hỏi về một năm TRƯỚC khi văn bản có hiệu lực.
+
+    Lưu ý tên trường gây nhầm: `reference_fields["nam_ban_hanh"]` thực ra chứa năm
+    HIỆU LỰC (`g8_unanswerable` lấy từ `n.ngay_hieu_luc`), không phải năm ban hành.
+    Hai mốc này lệch nhau thật — `65/2025/TT-BCT` ban hành 2025, hiệu lực 2026.
+    Kiểm theo thứ bộ sinh THỰC SỰ dùng, và ghi lại chỗ đặt tên sai để đổi ở lần
+    sinh sau (đổi tên trường bây giờ thì phải chạy lại paraphrase + C4, tốn tiền
+    API cho một cái tên).
+    """
     ids = _norm_theo_sh(c, s)
-    assert any((n := c.norms[x]).ngay_ban_hanh and n.ngay_ban_hanh.year == s["nam"]
-               for x in ids), f"{s['so_hieu']} phải ban hành năm {s['nam']}"
+    assert any((n := c.norms[x]).ngay_hieu_luc and n.ngay_hieu_luc.year == s["nam"]
+               for x in ids), (
+        f"{s['so_hieu']} phải có hiệu lực năm {s['nam']}, thấy "
+        f"{[str(c.norms[x].ngay_hieu_luc) for x in ids]}")
 
 
 def _khong_co_norm(c, s):
@@ -302,9 +334,28 @@ def test_doan_trich_nam_trong_expression(corpus, record_property):
     ds = [(i, s) for i, s in CANH_BAO if s["loai"] == "doan_trich_trong_expr"]
     if not ds:
         pytest.skip("không có sự kiện doan_trich_trong_expr")
-    lech = [i for i, s in ds
-            if (e := corpus.expressions.get(s["expr"])) is None
-            or _chuan(s["doan"])[:120] not in _chuan(e.text)]
+    # So với nội dung CẢ CÂY, không phải riêng một Expression: chunk trong index ghép
+    # sẵn câu dẫn với các Khoản/Điểm bên dưới, còn `Expression.text` chỉ có phần của
+    # riêng node đó (đo thật: 54 ký tự vs 890). So với node lẻ thì 80% ca lệch, và cái
+    # đỏ đó nói về cách lưu trữ chứ không nói gì về ánh xạ Expression→chunk.
+    lech, khong_co_text = [], []
+    for i, s in ds:
+        e = corpus.expressions.get(s["expr"])
+        if e is None:
+            lech.append(i)
+            continue
+        day_du = tv.noi_dung_cay(corpus, e.component_id)
+        if not day_du.strip():
+            # Đồ thị KHÔNG có nội dung, dù index có. Không kiểm được containment ở
+            # đây — và bản thân nó là phát hiện riêng, đo ở test kế bên.
+            khong_co_text.append(i)
+            continue
+        if _chuan(s["doan"])[:120] not in _chuan(day_du):
+            lech.append(i)
+    record_property("khong_co_text_trong_do_thi", len(khong_co_text))
+    ds = [x for x in ds if x[0] not in set(khong_co_text)]
+    if not ds:
+        pytest.skip("không ca nào có nội dung trong đồ thị để đối chiếu")
     ty = len(lech) / len(ds)
     record_property("ty_le_lech", round(ty, 3))
     assert ty <= NGUONG_LECH, (
@@ -340,6 +391,37 @@ def test_moi_loai_su_kien_deu_co_bo_kiem():
     thieu = {s["loai"] for _, s in _TAT_CA
              if s["muc"] == "chan" and s["loai"] not in BANG}
     assert not thieu, f"loại sự kiện chưa có bộ kiểm: {sorted(thieu)}"
+
+
+# CHỐT MỘT LỖ HỔNG ĐÃ BIẾT, không phải ngưỡng chấp nhận được.
+#
+# 62% gold span có nội dung CHỈ NẰM TRONG INDEX Qdrant, không có trong đồ thị. Bộ sinh
+# hiện tại đọc Qdrant nên không thấy; bộ sinh SAU A1 đọc `Corpus` sẽ mù đúng chừng ấy.
+# Con số này phải ĐI XUỐNG — hạ hằng số mỗi lần ingest ghi thêm text vào đồ thị, hoặc
+# về 0 khi `Corpus` nạp cả `chunks`. Tăng lên là hồi quy.
+NGUONG_KHONG_CO_TEXT = 0.63
+
+
+def test_do_thi_co_noi_dung_de_A1_doc_duoc(corpus, bo_de, record_property):
+    """Bao nhiêu gold span mà đồ thị không có nội dung tương ứng?
+
+    Bộ sinh HIỆN TẠI đọc text từ Qdrant nên không thấy vấn đề. Bộ sinh SAU A1 đọc
+    `Corpus` — và `Corpus` dựng từ Neo4j thì 14% Expression có `text` rỗng, kèm cây
+    con rỗng. Nghĩa là A1 không thể chỉ đổi nguồn truy vấn: hoặc ingest phải ghi text
+    vào đồ thị, hoặc `Corpus` phải nạp thêm `chunks` (schema đã chừa chỗ) và bộ sinh
+    lùi về đó khi `Expression.text` rỗng.
+
+    Test này để con số đó không trôi mà không ai biết.
+    """
+    ds = [(r["id"], r["gold_spans"][0]["expr_id"]) for r in bo_de if r.get("gold_spans")]
+    rong = [i for i, eid in ds
+            if (e := corpus.expressions.get(eid)) is None
+            or not tv.noi_dung_cay(corpus, e.component_id).strip()]
+    ty = len(rong) / max(len(ds), 1)
+    record_property("ty_le_khong_co_text", round(ty, 3))
+    assert ty <= NGUONG_KHONG_CO_TEXT, (
+        f"{len(rong)}/{len(ds)} = {ty:.0%} gold span không có nội dung trong đồ thị "
+        f"(ngưỡng {NGUONG_KHONG_CO_TEXT:.0%}) — A1 sẽ mù đúng chừng ấy phần bộ đề.")
 
 
 # Bao nhiêu phần kỳ vọng được phép "không kiểm được vì nguồn không có". Ngưỡng này là

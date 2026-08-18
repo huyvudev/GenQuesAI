@@ -122,8 +122,10 @@ CA = [
     ("so_dieu_khong_co", {"so_hieu": "15/2018/NĐ-CP", "so_dieu": 155},
      lambda c: setattr(c.components["d9"], "so_thu_tu", "155")),
 
-    ("nam_ban_hanh", {"so_hieu": "15/2018/NĐ-CP", "nam": 2017},
-     lambda c: setattr(c.norms["cu"], "ngay_ban_hanh", date(2019, 1, 1))),
+    # `reference_fields["nam_ban_hanh"]` của G8(c) thực ra chứa năm HIỆU LỰC — tên
+    # trường đặt sai, xem `_nam_ban_hanh` trong test_su_kien.py.
+    ("nam_ban_hanh", {"so_hieu": "15/2018/NĐ-CP", "nam": 2018},
+     lambda c: setattr(c.norms["cu"], "ngay_hieu_luc", date(2019, 1, 1))),
 ]
 
 

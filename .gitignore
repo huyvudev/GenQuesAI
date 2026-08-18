@@ -20,3 +20,12 @@ out/corpus/
 #   fixture/       corpus để replay offline; không commit thì chỉ máy CÓ Neo4j mới
 #                  chạy được golden — đúng thứ ROADMAP A3 vừa gỡ bỏ
 .pytest_cache/
+
+# tests/golden/fixture/ KHÔNG commit — dù nó là thứ khiến golden chạy offline.
+# Đánh đổi đã cân: 18 MB, và phải sinh lại mỗi lần bộ đề đổi, nên commit là bơm ~18 MB
+# vào lịch sử git mỗi vòng. Sinh lại chỉ mất một lệnh khi có Neo4j:
+#     python -m tests.trich_fixture
+# Riêng `pham_vi.json` VẪN commit: nó chốt các kỳ vọng PHỦ ĐỊNH (G8a — "số hiệu này
+# không tồn tại"), thứ chỉ đối chiếu được với đồ thị ĐẦY ĐỦ, không tái lập offline.
+tests/golden/fixture/*
+!tests/golden/fixture/pham_vi.json

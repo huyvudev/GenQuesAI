@@ -54,6 +54,9 @@ MAC_DINH_RA = GOC / "tests" / "golden" / "fixture"
 
 # Sự kiện nào cần trọn cây thành phần của văn bản
 CAN_CAY_DAY = {"dieu_hien_hanh", "so_dieu_lon_nhat", "so_dieu_khong_co"}
+# Đủ dài để phủ phép đối chiếu 120 ký tự đầu của `test_su_kien`, cộng biên an toàn.
+MAX_TEXT = 600
+CAT_DUOI = "…[cắt cho fixture]"
 # Sự kiện nào tra văn bản bằng số hiệu chứ không bằng norm_id
 TRA_BANG_SO_HIEU = {"khong_co_norm", "so_dieu_lon_nhat", "so_dieu_khong_co",
                     "nam_ban_hanh"}
@@ -240,6 +243,15 @@ def xuat(neo, ra_dir: Path, ky_vong: list[dict]) -> dict:
         for r in neo.run(Q_EXPR_CUA_CAY, ids=sorted(comps)):
             exprs.setdefault(str(r["id"]), _expr(r))
     exprs = {k: v for k, v in exprs.items() if v.component_id in comps}
+
+    # Cắt bớt text để fixture commit được. Kỳ vọng golden chỉ đối chiếu ĐẦU đoạn trích
+    # (120 ký tự đầu, xem `test_su_kien`), nên phần đuôi không phục vụ phép kiểm nào —
+    # nhưng nó chiếm 12/19 MB. Giữ nguyên khi ngắn để mọi kỳ vọng hiện có vẫn kiểm được.
+    # Đây là ĐÁNH ĐỔI CÓ Ý THỨC: fixture commit được thì golden chạy offline trên máy
+    # trắng; không commit được thì chỉ máy có Neo4j mới chạy nổi — đúng thứ A3 vừa gỡ.
+    for e in exprs.values():
+        if len(e.text) > MAX_TEXT:
+            e.text = e.text[:MAX_TEXT] + CAT_DUOI
 
     ct = [DieuKhoanChuyenTiep(rule_id=str(r["id"]), norm_id=str(r["norm_id"]),
                               dieu_kien=r["dk"] or "", ap_dung=r["ap"] or "",

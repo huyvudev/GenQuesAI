@@ -1,0 +1,49 @@
+{
+ "day_du": false,
+ "phu_dinh": {
+  "936/2025/TT-BYT": true,
+  "869/2026/NĐ-CP": true,
+  "788/2025/TT-BKHCN": true,
+  "987/2025/TT-NHNN": true,
+  "784/2025/TT-BYT": true,
+  "836/2025/TT-BTC": true
+ },
+ "nguon_khong_co": {
+  "norm": [],
+  "expr": [],
+  "so_hieu": [
+   "784/2025/TT-BYT",
+   "788/2025/TT-BKHCN",
+   "836/2025/TT-BTC",
+   "869/2026/NĐ-CP",
+   "936/2025/TT-BYT",
+   "987/2025/TT-NHNN"
+  ]
+ },
+ "thong_ke": {
+  "norm": 2205,
+  "norm_hat": 609,
+  "component": 29984,
+  "expression": 29984,
+  "quan_he": 4907,
+  "chuyen_tiep": 103,
+  "so_hieu_khong_tim_thay": [
+   "784/2025/TT-BYT",
+   "788/2025/TT-BKHCN",
+   "836/2025/TT-BTC",
+   "869/2026/NĐ-CP",
+   "936/2025/TT-BYT",
+   "987/2025/TT-NHNN"
+  ],
+  "nguon_khong_co_norm": 0,
+  "nguon_khong_co_expr": 0,
+  "phu_dinh_da_chot": {
+   "936/2025/TT-BYT": true,
+   "869/2026/NĐ-CP": true,
+   "788/2025/TT-BKHCN": true,
+   "987/2025/TT-NHNN": true,
+   "784/2025/TT-BYT": true,
+   "836/2025/TT-BTC": true
+  }
+ }
+}

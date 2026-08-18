@@ -120,14 +120,10 @@ def test_che_do_moi_cham_dung_so_hieu_dang_cu():
     assert all(c.passed for c in grade(dung, de, che_do="moi"))
 
 
-def test_che_do_cu_giu_nguyen_ngu_nghia_tren_bo_de_hien_tai(bo_de):
-    """Điều kiện để ba mốc baseline đã commit còn so được: trên ĐÚNG bộ đề đã freeze,
-    hai chế độ phải cho cùng khoá cho mọi số hiệu xuất hiện."""
-    from framework.grader import chuan_so_hieu
-    lech = []
-    for r in bo_de:
-        for x in (r.get("reference_fields", {}).get("danh_sach") or []) + \
-                 [r.get("reference_fields", {}).get("so_hieu")]:
-            if x and chuan_so_hieu(x, False) != chuan_so_hieu(x, True):
-                lech.append(x)
-    assert not lech, f"{len(lech)} số hiệu cho khoá khác nhau giữa hai chế độ: {lech[:5]}"
+# Bộ đề có lưu ĐÚNG số hiệu của văn bản không — việc đó phải so với ĐỒ THỊ, và nó đã
+# được kiểm ở tầng golden (`test_su_kien`, sự kiện `so_hieu_norm`, 520 kỳ vọng).
+#
+# Đừng thay bằng phép tự-đối-chiếu "mẫu cũ đọc khác mẫu mới": nó đo tính chất của mẫu
+# cũ chứ không đo bộ đề. Bản freeze TRƯỚC lưu sẵn `54/2014/QĐ-TT` nên tự-đối-chiếu cho
+# 0 lỗi, trong khi bộ đề đó thực sự hỏng; bản MỚI lưu đầy đủ `72/2025/NQLT/UBTVQH15-CP`
+# nên bị bắt oan 7 ca. Đúng chỗ để kiểm là đối chiếu với nguồn.
