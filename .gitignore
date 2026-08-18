@@ -13,6 +13,9 @@ out/corpus/
 !out/ket_qua_eval.json
 !out/ket_qua_k30.json
 !out/ket_qua_k30_budget40k.json
+# Mốc 0 của loạt MỚI: bộ đề sinh lại + đồ thị hiện tại + grader che_do="moi".
+# KHÔNG so trực tiếp với ba mốc trên — khác cả ba thứ đó.
+!out/ket_qua_v2.json
 
 # tests/golden/ KHÔNG bỏ qua — cả hai file đều là hợp đồng, không phải dữ liệu tạm:
 #   ky_vong.jsonl  chưng cất từ bộ đề đã freeze; không commit thì mỗi máy tự sinh một
