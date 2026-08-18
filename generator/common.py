@@ -13,6 +13,8 @@ import sys
 import uuid
 from pathlib import Path
 
+from framework import so_hieu as _sh
+
 _stdout_da_boc = False
 
 
@@ -85,34 +87,83 @@ def verify_point_id(store, sample: int = 20) -> tuple[int, int]:
 
 # ── chuẩn hoá số hiệu ───────────────────────────────────────────────────────
 # Dữ liệu thật không đồng nhất: "52/2024/NĐ-CP" nhưng cũng "Thông tư 38/2024/TT-BYT".
-# Chấm exact-match phải so trên phần lõi, nếu không sẽ báo sai hàng loạt.
-# Đuôi có thể chứa CHỮ SỐ: 'QH15', 'QH12'. Thiếu \d ở lớp ký tự thì '03/2022/QH15'
-# bị cắt còn '03/2022/QH' — số hiệu sai, và exact-match sẽ báo sai toàn bộ nhóm Luật.
-_SO_HIEU = re.compile(r"\d+[a-zA-Z]?/\d{4}/[A-ZĐ][A-ZĐ0-9\-]*", re.UNICODE)
-
-
+# Uỷ quyền hết cho `framework.so_hieu` — một chỗ chuẩn hoá cho cả framework.
+#
+# Bản cũ ở đây đòi khuôn `số/NĂM-4-CHỮ-SỐ/ký hiệu`, nên **mù 46% kho**: mọi số hiệu
+# không mang năm ở giữa đều trả None và bị bộ sinh loại ở `bo_vi_so_hieu`. Đo trên mẫu
+# 3.000 văn bản thật: bản cũ đọc được 1.594 (53%), bản mới 2.976 (99%) — 1.382 văn bản
+# (sắc lệnh, công văn VPCP, thông tư dạng `76-TC/TCDN`) trước đây KHÔNG BAO GIỜ được hỏi.
+#
+# Đây là lỗi MÙ, không phải lỗi sai: bộ đề im lặng thu hẹp phạm vi rồi báo cáo như thể
+# đã phủ toàn kho. Với công cụ đo chatbot của người khác thì đó là hỏng nặng hơn sai số.
 def core_so_hieu(so_hieu: str | None) -> str | None:
     """'Thông tư 38/2024/TT-BYT' -> '38/2024/TT-BYT'. Không khớp -> None."""
-    if not so_hieu:
-        return None
-    m = _SO_HIEU.search(so_hieu)
-    return m.group(0) if m else None
+    return _sh.trich(so_hieu)
 
 
-# Bản KHÔNG phân biệt hoa thường — dùng để PHÁT HIỆN rò rỉ, không để trích chuẩn.
-# Dữ liệu thật có cả 'nđ-cp' viết thường; dùng core_so_hieu() để canh rò rỉ thì lọt.
-_SO_HIEU_I = re.compile(r"\d+[a-zA-Z]?/\d{4}/[A-ZĐ][A-ZĐ0-9\-]*", re.IGNORECASE)
+Q_MOI_SO_HIEU = "MATCH (n:Norm) WHERE n.so_hieu IS NOT NULL RETURN n.so_hieu AS sh, n.norm_id AS id"
+_cache_nhap_nhang: dict[int, frozenset] = {}
+
+
+def khoa_nhap_nhang(neo) -> frozenset[str]:
+    """Khoá số hiệu ứng với NHIỀU HƠN MỘT văn bản — quét toàn đồ thị, nhớ theo phiên.
+
+    Số hiệu dạng cũ không mang năm nên bị tái sử dụng: `90/CP` ngày 15/12/1995 và
+    `90/CP` ngày 24/11/1993 là hai văn bản khác nhau. Nhóm nào có ĐÁP ÁN LÀ ĐỊNH DANH
+    (G1: "văn bản nào thay thế X", G4′: danh sách văn bản tác động) thì câu hỏi mất
+    tính đơn trị — không chấm exact-match được.
+
+    Framework KHÔNG viết lại số hiệu cho duy nhất: bịa định danh thì câu hỏi trỏ vào
+    văn bản không tồn tại. Cách xử lý là LOẠI, và khai ra ở báo cáo năng lực.
+
+    Đo trên mẫu 3.000 văn bản: 6 khoá / 12 văn bản (0,2%) — nhỏ nên loại là đủ. Corpus
+    nào tỷ lệ này cao thì `capabilities.kiem_chat_luong()` sẽ nói, và lúc đó mới đáng
+    dựng câu hỏi nêu kèm ngày ban hành.
+    """
+    if (k := id(neo)) in _cache_nhap_nhang:
+        return _cache_nhap_nhang[k]
+    gom: dict[str, set] = {}
+    for r in neo.stream(Q_MOI_SO_HIEU):
+        if (kh := _sh.khoa(r["sh"])):
+            gom.setdefault(kh, set()).add(str(r["id"]))
+    ra = frozenset(kh for kh, v in gom.items() if len(v) > 1)
+    _cache_nhap_nhang[k] = ra
+    return ra
 
 
 def co_so_hieu(s: str | None) -> bool:
-    return bool(s and _SO_HIEU_I.search(s))
+    """Canh rò rỉ định danh trong câu `situation`.
+
+    Bộ canh phải LỎNG HƠN bộ trích — bỏ sót ở đây nghĩa là một câu situation lọt ra
+    với số hiệu nằm sẵn trong đề, và nó mồi thẳng từ khoá cho BM25 (§5.2).
+    `tim_tat_ca` phủ cả dạng có năm lẫn không năm, và không phân biệt hoa thường.
+
+    Đã đo trên 179 câu situation của bộ đề hiện tại: bản này KHÔNG đánh dấu thêm câu
+    nào — nới rộng mà không sinh dương tính giả.
+    """
+    return bool(s and _sh.tim_tat_ca(s))
 
 
 # Tiêu đề Norm có dạng: "Thông tư số 12/2016/TT-BTTTT Quy định về việc chỉ định ..."
 # -> CHỨA SỐ HIỆU, phải bóc trước khi dùng làm chủ đề cho câu `situation`.
-_BOC_SH = re.compile(r"^.*?\d+[a-zA-Z]?/\d{4}/[A-ZĐ][A-ZĐ0-9\-]*\s*", re.S)
 _BOC_DAU = re.compile(r"^(?:quy định|hướng dẫn|ban hành|sửa đổi[^ ]*|về|việc)\s+",
                       re.IGNORECASE)
+
+
+def _boc_so_hieu(t: str) -> str:
+    """Cắt bỏ phần đầu tiêu đề cho tới hết số hiệu — lặp cho tới khi hết.
+
+    Phải LẶP: dữ liệu thật ghi số hiệu hai lần trong một tiêu đề —
+    'Thông tư số 76-TC/TCDN của Bộ Tài chính số 76 TC/TCDN ngày 15…'. Cắt một lần
+    thì bản thứ hai còn nguyên, và chủ đề rút ra vẫn lộ định danh.
+    """
+    s = t.strip()
+    for _ in range(4):
+        lo = _sh.trich(s)
+        if not lo or (i := s.find(lo)) < 0:
+            break
+        s = s[i + len(lo):].strip(' "\',.-')
+    return s
 
 
 def chu_de_tu_norm(tieu_de: str | None) -> str | None:
@@ -123,7 +174,7 @@ def chu_de_tu_norm(tieu_de: str | None) -> str | None:
     """
     if not tieu_de:
         return None
-    s = _BOC_SH.sub("", tieu_de.strip()).strip(' "\'')
+    s = _boc_so_hieu(tieu_de)
     for _ in range(3):
         s2 = _BOC_DAU.sub("", s).strip()
         if s2 == s:

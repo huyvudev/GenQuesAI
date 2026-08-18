@@ -1,18 +1,32 @@
 """Chuẩn hoá số hiệu văn bản QPPL.
 
-Hàm này nằm trên đường đi NÓNG NHẤT của framework: mọi check citation đều đi qua nó.
-Sai ở đây là sai lan toàn hệ — hệ được đo bị chấm sai vì CÁCH GHI chứ không vì chất
-lượng. Nên nó được thiết kế theo số đo thật trên 66.368 văn bản, không theo phỏng đoán.
+Hàm này nằm trên đường đi NÓNG NHẤT của framework: mọi check citation và mọi phép lọc
+ứng viên đều đi qua nó. Sai ở đây sai theo HAI hướng ngược nhau, và cả hai đều im lặng:
 
-Đo 2026-08-07 với mẫu cũ `\\d+[a-zA-Z]?/\\d{4}/[A-ZĐ][A-ZĐ0-9\\-]*`:
+    quá CHẶT  -> mù một phần kho. Bộ sinh loại sạch những văn bản nó không đọc nổi,
+                 rồi bộ đề báo cáo như thể đã phủ toàn bộ.
+    quá LỎNG  -> hai văn bản khác nhau ra cùng một khoá. Hệ trả lời SAI được chấm ĐÚNG.
+
+Nên nó được thiết kế theo số đo thật, không theo phỏng đoán.
+
+Đo 2026-08-07 với mẫu cũ `\\d+[a-zA-Z]?/\\d{4}/[A-ZĐ][A-ZĐ0-9\\-]*` (66.368 văn bản):
 
   · chỉ **54,1%** số hiệu khớp — 30.479 văn bản trượt hoàn toàn
-  · thiên lệch theo thập niên rất nặng: trước 1990 gần như 0%, 2010s chỉ 51,2%
+  · thiên lệch theo thập niên rất nặng: trước 1990 gần như 0%
     (dạng cũ không có năm trong số hiệu: `01/BKH-DN`, `003-TT/LB`, `01/CT-TTg`)
   · **106 văn bản bị CẮT CỤT**: `01/2001/CT.UBT` → `01/2001/CT` — sai định danh,
     tệ hơn bị loại, vì câu hỏi sẽ trỏ vào một văn bản không tồn tại
   · **498 core bị 1.056 văn bản dùng chung**: `01/2005/TTLT/BCA-BLĐTBXH` và
     `01/2005/TTLT/BNV-BTC` cùng ra `01/2005/TTLT` vì lớp ký tự dừng ở dấu `/`
+
+Đo lại 2026-08-18 trên mẫu 3.000 văn bản, sau khi bản này thay bản cũ ở bộ sinh và ở
+`grader` (chế độ `moi`):
+
+  · đọc được **99%** (2.976/3.000), so với 53% của mẫu cũ
+  · **1.382 văn bản** trước đây không bao giờ được hỏi tới nay đã dùng được
+  · khoá còn va chạm: **6 nhóm / 12 văn bản (0,2%)**, và cả 12 đều có `ngay_ban_hanh`
+    để phân biệt. Đó là nhập nhằng THẬT (`90/CP` 1995 vs 1993), không phải lỗi mẫu —
+    xử lý ở `truy_van.khoa_nhap_nhang()`, không phải ở đây.
 """
 from __future__ import annotations
 
@@ -27,6 +41,18 @@ _ĐONG_DANG = {"Ð": "Đ", "ð": "đ"}
 # `.` (CT.UBT), `&` (BKH&ĐT), chữ thường (TTg) và chữ số (QH15). Lớp ký tự liệt kê
 # từng thứ một là cách chắc chắn sẽ bỏ sót; lấy-tới-khoảng-trắng thì không.
 _CO_NAM = re.compile(r"\d+[a-zA-Z]?/\d{4}/[^\s,;()\[\]]+")
+
+# Dạng NĂM HAI CHỮ SỐ — `127/99/TT-BTC`, dùng nhiều ở thập niên 1990.
+#
+# Phải thử TRƯỚC `_KHONG_NAM`, và đây không phải chuyện thứ tự cho đẹp. `_KHONG_NAM`
+# dùng `search` nên với `127/99/TT-BTC` nó khớp từ giữa chuỗi và trả về `99/TT-BTC` —
+# tiền tố `127` bị nuốt mất. Hậu quả: `127/99/TT-BTC` và `129/99/TT-BTC` ra CÙNG một
+# khoá, tức hai văn bản khác nhau được chấm là bằng nhau. Đo trên mẫu 3.000 văn bản:
+# 4/6 văn bản dạng này bị đánh đồng với văn bản khác.
+#
+# `[A-ZĐa-zđ]` sau dấu `/` thứ hai là chốt phân biệt với NGÀY THÁNG: `15/03/2024` có
+# `2024` là chữ số nên không khớp, còn `127/99/TT-BTC` có `TT` là chữ cái nên khớp.
+_NAM_NGAN = re.compile(r"\d+[a-zA-Z]?/\d{2}/[A-ZĐa-zđ][^\s,;()\[\]]*")
 
 # Dạng KHÔNG CÓ NĂM — văn bản cũ. Phải có chữ cái sau dấu phân cách để không nuốt
 # nhầm ngày tháng (`15/2018`) hay phân số.
@@ -50,7 +76,7 @@ def trich(s: str | None) -> str | None:
     if not s:
         return None
     s = _chuan_ky_tu(s)
-    m = _CO_NAM.search(s) or _KHONG_NAM.search(s)
+    m = _CO_NAM.search(s) or _NAM_NGAN.search(s) or _KHONG_NAM.search(s)
     if not m:
         return None
     lo = m.group(0).rstrip(_DUOI_THUA)
@@ -92,9 +118,12 @@ def tim_tat_ca(text: str | None) -> list[str]:
             da.add(k)
             ra.append(lo)
 
-    for m in _CO_NAM.finditer(t):
-        phu.append(m.span())
-        them(m.group(0))
+    for mau in (_CO_NAM, _NAM_NGAN):
+        for m in mau.finditer(t):
+            if any(x <= m.start() < y for x, y in phu):
+                continue
+            phu.append(m.span())
+            them(m.group(0))
     for m in _KHONG_NAM.finditer(t):
         if any(a <= m.start() < b for a, b in phu):
             continue                     # nằm trong vùng đã khớp mẫu có-năm

@@ -10,7 +10,8 @@ import re
 from dataclasses import dataclass
 
 from .schema import Corpus, LoaiQuanHe, NguonQuanHe
-from .truy_van import nguon_cua
+from . import so_hieu
+from .truy_van import khoa_nhap_nhang, nguon_cua
 
 QUOTA = {"G1": 50, "G2": 80, "G3": 60, "G4": 40, "G5": 30, "G6": 25, "G7": 90, "G8": 25}
 TEN = {"G1": "thay thế văn bản", "G2": "tại một thời điểm",
@@ -166,10 +167,27 @@ def kiem_chat_luong(c: Corpus) -> list[str]:
     """Mỗi mục dưới đây là một lỗi ĐÃ GẶP THẬT trên dữ liệu, không phải phòng xa."""
     canh: list[str] = []
 
-    xau = [n.norm_id for n in c.norms.values() if not _SO_HIEU.search(n.so_hieu or "")]
+    # Dùng bộ đọc của framework, KHÔNG dùng `_SO_HIEU` cũ: mẫu cũ đòi năm 4 chữ số nên
+    # báo "không parse được" cho 46% kho, trong khi phần lớn số đó đọc được bình thường.
+    # Cảnh báo sai chỗ còn tệ hơn không cảnh báo — nó dẫn người ta đi sửa dữ liệu lành.
+    xau = [n.so_hieu or n.norm_id for n in c.norms.values() if not so_hieu.khoa(n.so_hieu)]
     if xau:
-        canh.append(f"{len(xau):,} văn bản có `so_hieu` không parse được "
+        canh.append(f"{len(xau):,} văn bản có `so_hieu` không đọc được "
                     f"(vd {xau[:3]}) — sẽ bị loại khi sinh")
+
+    # Số hiệu dùng lại: `90/CP` ngày 15/12/1995 và `90/CP` ngày 24/11/1993 là HAI văn
+    # bản. Nhóm nào có đáp án là định danh (G1, G4′) không dùng được chúng.
+    nn = khoa_nhap_nhang(c, so_hieu.khoa)
+    if nn:
+        vd = list(nn)[:3]
+        co_ngay = sum(1 for ids in nn.values()
+                      for i in ids if (x := c.norms.get(i)) and x.ngay_ban_hanh)
+        tong = sum(len(v) for v in nn.values())
+        canh.append(
+            f"{len(nn):,} số hiệu ứng với NHIỀU văn bản ({tong:,} văn bản, vd {vd}) — "
+            f"câu hỏi có đáp án là định danh sẽ không đơn trị. "
+            + (f"{co_ngay}/{tong} có `ngay_ban_hanh` để phân biệt"
+               if co_ngay else "KHÔNG có `ngay_ban_hanh` để phân biệt — buộc phải loại"))
 
     # Chiều THAY_THE: bên thay phải MỚI HƠN bên bị thay.
     nguoc = 0

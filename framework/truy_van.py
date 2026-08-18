@@ -333,6 +333,30 @@ def norm_theo_so_hieu(c: Corpus, so_hieu: str, chuan_hoa=None) -> list[str]:
     return [n.norm_id for n in c.norms.values() if chuan_hoa(n.so_hieu) == dich]
 
 
+def khoa_nhap_nhang(c: Corpus, chuan_hoa=None) -> dict[str, list[str]]:
+    """Những khoá số hiệu ứng với NHIỀU HƠN MỘT văn bản.
+
+    Số hiệu được cơ quan ban hành đặt, và dạng cũ không mang năm nên có thể tái sử
+    dụng: `90/CP` ngày 15/12/1995 và `90/CP` ngày 24/11/1993 là hai văn bản khác nhau.
+
+    Framework KHÔNG viết lại số hiệu để làm cho nó duy nhất — bịa định danh thì câu
+    hỏi trỏ vào một văn bản không tồn tại, đúng thứ cổng C1 sinh ra để chặn. Thay vào
+    đó nêu ra ở đây, và bộ sinh tự quyết: nhóm nào có ĐÁP ÁN LÀ ĐỊNH DANH (G1, G4′)
+    thì phải loại, vì câu hỏi không có đáp án đơn trị.
+
+    Đo trên mẫu 3.000 văn bản thật: 6 khoá / 12 văn bản (0,2%). Nhưng đó là tính chất
+    của corpus NÀY — corpus khác có thể tệ hơn nhiều, nên phải đo chứ đừng giả định.
+    """
+    if chuan_hoa is None:
+        from . import so_hieu
+        chuan_hoa = so_hieu.khoa
+    gom: dict[str, list[str]] = {}
+    for n in c.norms.values():
+        if (k := chuan_hoa(n.so_hieu)):
+            gom.setdefault(k, []).append(n.norm_id)
+    return {k: v for k, v in gom.items() if len(v) > 1}
+
+
 def loc_da_duyet(c: Corpus, qs: Iterable) -> list:
     """Bộ lọc `da_duyet` áp đúng chỗ: chỉ ép khi corpus khai là trích tự động."""
     if not c.meta.quan_he_tu_dong:

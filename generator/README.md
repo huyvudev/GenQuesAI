@@ -58,6 +58,42 @@ hai quy định có *hệ quả pháp lý* khác nhau hay chỉ khác mức đ�
 động hoá đáng tin được. **G8 không có `gold_spans` là đúng thiết kế**: câu không có
 đáp án thì không có gì để trích dẫn.
 
+## Phạm vi số hiệu — vì sao bộ đề sinh lại sẽ khác bản đã freeze
+
+`common.core_so_hieu` trước đây đòi khuôn `số/NĂM-4-CHỮ-SỐ/ký hiệu`, nên **mù 46% kho**:
+mọi số hiệu không mang năm ở giữa (`01/CT-TTg`, `76-TC/TCDN`, `113/SL`, công văn
+`8032/VPCP-V.III`) đều trả `None` và bị loại ở `bo_vi_so_hieu`.
+
+Đó là lỗi **mù**, không phải lỗi sai: không con số nào bị chấm sai, nhưng bộ đề im lặng
+thu hẹp phạm vi rồi báo cáo như thể đã phủ toàn kho. Chatbot yếu ở mảng công văn / văn
+bản cũ thì bộ đề không phát hiện được.
+
+Nay uỷ quyền hết cho `framework.so_hieu`. Đo trên mẫu 3.000 văn bản:
+
+```
+                              trước    sau
+đọc được số hiệu               53%     99%     +1.382 văn bản dùng được
+bóc được chủ đề từ tiêu đề     93%     98%     bộ bóc lặp, cắt tới số hiệu cuối cùng
+```
+
+**Hệ quả: sinh lại bộ đề sẽ ra bộ câu khác bản đã freeze** — tập ứng viên rộng gấp đôi.
+Ba mốc eval đã lưu không so trực tiếp với lần chạy mới được, phải re-baseline.
+
+### Số hiệu dùng lại
+
+`90/CP` ngày 15/12/1995 và `90/CP` ngày 24/11/1993 là **hai văn bản**. Framework không
+viết lại số hiệu cho duy nhất — bịa định danh thì câu hỏi trỏ vào văn bản không tồn tại.
+Cách xử lý:
+
+| | |
+|---|---|
+| **G1** đáp án LÀ định danh | loại cả câu — hỏi hay đáp mơ hồ thì câu hỏi vô nghĩa |
+| **G4′** đáp án là DANH SÁCH | bỏ phần tử mơ hồ, giữ câu; còn <2 phần tử thì mới bỏ câu |
+| nhóm khác | không ảnh hưởng — đáp án là nội dung, không phải định danh |
+
+Đo thật: 6 khoá / 12 văn bản (0,2%) nên loại là đủ. Corpus nào tỷ lệ này cao thì
+`framework.cli soi` sẽ báo, và lúc đó mới đáng dựng câu hỏi nêu kèm ngày ban hành.
+
 ## Soi bộ đề — xem bộ sinh vừa đẻ ra cái gì
 
 ```bash

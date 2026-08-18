@@ -14,7 +14,9 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from .common import core_so_hieu
+from framework import so_hieu as _sh
+
+from .common import core_so_hieu, khoa_nhap_nhang
 from .gold import GoldSpan, find_evidence_span, gate_c1
 
 # Tối đa bao nhiêu câu dùng chung một văn bản thay thế. Một văn bản mới có thể bãi bỏ
@@ -87,12 +89,14 @@ def build(neo, store, n: int = 50, pool: int = 600, seed: int = 20260806) -> tup
     rng = random.Random(seed)
     rows = neo.run(SELECT, pool=pool)
     rng.shuffle(rows)
+    nhap_nhang = khoa_nhap_nhang(neo)
 
     items: list[Item] = []
     dem_moi: dict[str, int] = {}
     stat = {"ung_vien": len(rows), "c1_pass": 0, "c1_fail": 0,
             "bo_vi_so_hieu": 0, "bo_vi_trung_vb_moi": 0,
-            "bo_vi_bang_chung_yeu": 0, "bo_vi_khong_thay_span": 0}
+            "bo_vi_bang_chung_yeu": 0, "bo_vi_khong_thay_span": 0,
+            "bo_vi_khoa_nhap_nhang": 0}
 
     for r in rows:
         if len(items) >= n:
@@ -100,6 +104,12 @@ def build(neo, store, n: int = 50, pool: int = 600, seed: int = 20260806) -> tup
         cu_core, moi_core = core_so_hieu(r["cu_so_hieu"]), core_so_hieu(r["moi_so_hieu"])
         if not cu_core or not moi_core:
             stat["bo_vi_so_hieu"] += 1          # số hiệu không parse được -> bỏ, không đoán
+            continue
+        # Đáp án G1 LÀ một số hiệu, chấm exact-match. Số hiệu ứng với nhiều văn bản thì
+        # câu hỏi không đơn trị: hệ trả "90/CP" đúng hay sai còn tuỳ nó hiểu bản nào.
+        # Hỏi ở đầu `cu` cũng vậy — đề bài mơ hồ thì đáp án không cứu được.
+        if {_sh.khoa(cu_core), _sh.khoa(moi_core)} & nhap_nhang:
+            stat["bo_vi_khoa_nhap_nhang"] += 1
             continue
         if dem_moi.get(r["moi_id"], 0) >= MAX_MOI_LAP:
             stat["bo_vi_trung_vb_moi"] += 1     # đa dạng hoá đáp án

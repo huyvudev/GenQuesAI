@@ -19,7 +19,9 @@ import random
 import re
 from dataclasses import dataclass, field
 
-from .common import chu_de_tu_norm, core_so_hieu
+from framework import so_hieu as _sh
+
+from .common import chu_de_tu_norm, core_so_hieu, khoa_nhap_nhang
 from .gold import find_evidence_span, gate_c1
 
 MIN_SO_VB = 2          # phải bị ≥2 văn bản tác động -> mới là câu hỏi DANH SÁCH
@@ -82,10 +84,12 @@ def build(neo, store, n: int = 40, pool: int = 1500, min_conf: float = 0.85,
     rng = random.Random(seed)
     rows = neo.run(SELECT, pool=pool, min_conf=min_conf, min_vb=MIN_SO_VB)
     rng.shuffle(rows)
+    nhap_nhang = khoa_nhap_nhang(neo)
 
     items: list[Item] = []
     stat = {"ung_vien": len(rows), "bo_vi_so_hieu": 0, "bo_vi_gop_con_1": 0,
-            "co_bang_chung": 0, "graph_only": 0, "c1_fail": 0, "co_suadoi": 0}
+            "co_bang_chung": 0, "graph_only": 0, "c1_fail": 0, "co_suadoi": 0,
+            "bo_vi_khoa_nhap_nhang": 0, "bo_phan_tu_nhap_nhang": 0}
 
     for r in rows:
         if len(items) >= n:
@@ -94,6 +98,10 @@ def build(neo, store, n: int = 40, pool: int = 1500, min_conf: float = 0.85,
         if not vb:
             stat["bo_vi_so_hieu"] += 1
             continue
+        # Văn bản ĐƯỢC HỎI mà mơ hồ thì cả câu vô nghĩa — bỏ luôn.
+        if _sh.khoa(vb) in nhap_nhang:
+            stat["bo_vi_khoa_nhap_nhang"] += 1
+            continue
 
         # Gộp trùng rồi mới kiểm số lượng: 3 biến thể của cùng 1 văn bản không phải
         # câu hỏi danh sách, và nếu giữ thì Set-F1 phạt hệ vì trả lời ĐÚNG một lần.
@@ -101,6 +109,12 @@ def build(neo, store, n: int = 40, pool: int = 1500, min_conf: float = 0.85,
         for t in r["tac_dong"]:
             sh = core_so_hieu(t["sh"])
             if not sh or sh == vb:
+                continue
+            # Đáp án G4′ là DANH SÁCH số hiệu, chấm Set-F1. Một phần tử mơ hồ thì
+            # không phán được hệ trả đúng hay sai phần tử đó -> bỏ phần tử, giữ câu.
+            # Khác G1 ở chỗ: mất một phần tử vẫn còn câu hỏi, mất văn bản được hỏi thì không.
+            if _sh.khoa(sh) in nhap_nhang:
+                stat["bo_phan_tu_nhap_nhang"] += 1
                 continue
             gop.setdefault(_khoa_gop(sh), {"sh": sh, "id": t["id"], "loai": t["loai"]})
         ds = list(gop.values())

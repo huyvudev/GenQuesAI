@@ -20,6 +20,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from . import so_hieu as _sh
+
 # Cụm từ cho thấy hệ TỪ CHỐI / không kết luận. Danh sách này phụ thuộc cách hành văn
 # của từng hệ — framework cho phép mở rộng thay vì bắt mọi hệ nói giống nhau.
 REFUSAL_MARKERS: tuple[str, ...] = (
@@ -32,6 +34,13 @@ REFUSAL_MARKERS: tuple[str, ...] = (
     "không tìm thấy văn bản",
 )
 
+# Mẫu CŨ — chỉ khuôn `số/NĂM-4-CHỮ-SỐ/ký hiệu`. Giữ lại cho `che_do="cu"`, KHÔNG phải
+# vì nó đúng mà vì các mốc baseline đã lưu được chấm bằng nó; bỏ đi là mất khả năng so
+# hồi quy. Hai chỗ nó sai, đã đo trên corpus thật:
+#   · mù 47% số hiệu — mọi dạng không mang năm ở giữa (`01/CT-TTg`, `76-TC/TCDN`)
+#   · CẮT CỤT — `01/2005/TTLT/BCA-BLĐTBXH` -> `01/2005/TTLT`, và 498 lõi bị 1.056 văn
+#     bản dùng chung ⇒ hai văn bản khác nhau được chấm là bằng nhau
+# `che_do="moi"` dùng `framework.so_hieu`, đã đo đọc được 99%.
 _SO_HIEU = re.compile(r"\d+[a-zA-Z]?/\d{4}/[A-ZĐ][A-ZĐ0-9\-]*", re.IGNORECASE)
 
 
@@ -43,13 +52,18 @@ class Check:
     score: float | None = None   # None = nhị phân; có giá trị = chấm liên tục
 
 
-def chuan_so_hieu(s: str | None) -> str | None:
+def chuan_so_hieu(s: str | None, moi: bool = False) -> str | None:
     """'Nghị định 15/2018/NĐ-CP' -> '15/2018/nđ-cp'.
 
     Chuẩn hoá hai đầu trước khi so là bắt buộc với framework: bộ chuẩn ghi
     `15/2018/NĐ-CP` còn corpus của họ có thể ghi `Nghị định 15/2018/NĐ-CP`. So chuỗi
     thô thì hệ bị chấm sai vì CÁCH GHI, không phải vì chất lượng.
+
+    `moi=True` dùng `framework.so_hieu` — đọc được cả dạng không mang năm và không cắt
+    cụt ký hiệu ghép. Mặc định vẫn là mẫu cũ để `che_do="cu"` giữ nguyên ngữ nghĩa.
     """
+    if moi:
+        return _sh.khoa(s)
     if not s:
         return None
     m = _SO_HIEU.search(s)
@@ -67,7 +81,7 @@ def is_refusal(answer: str, markers: tuple[str, ...] = REFUSAL_MARKERS) -> bool:
 MARKERS_CU: tuple[str, ...] = REFUSAL_MARKERS[:5]
 
 
-def _neu_ra(result: dict, hop_den: bool = True) -> set[str]:
+def _neu_ra(result: dict, hop_den: bool = True, moi: bool = False) -> set[str]:
     """Số hiệu hệ nêu ra — gộp `focus_norms` và `citations`, đã chuẩn hoá.
 
     `hop_den=True` vớt thêm số hiệu ngay trong câu trả lời: hệ hộp đen không nêu
@@ -76,11 +90,17 @@ def _neu_ra(result: dict, hop_den: bool = True) -> set[str]:
     out: set[str] = set()
     for khoa in ("focus_norms", "citations"):
         for x in result.get(khoa, []) or []:
-            if (sh := chuan_so_hieu(x.get("so_hieu"))):
+            if (sh := chuan_so_hieu(x.get("so_hieu"), moi)):
                 out.add(sh)
     if hop_den:
-        for m in _SO_HIEU.finditer(result.get("answer", "") or ""):
-            out.add(m.group(0).lower())
+        if moi:
+            # `tim_tat_ca` che vùng đã khớp mẫu có-năm trước khi chạy mẫu không-năm,
+            # nếu không `99/2021/NĐ-CP` đẻ ra bóng ma `2021/NĐ-CP` — và bóng ma đó lọt
+            # vào tập "số hiệu hệ đã nêu", làm check `not_governing` báo sai.
+            out.update(x.casefold() for x in _sh.tim_tat_ca(result.get("answer", "")))
+        else:
+            for m in _SO_HIEU.finditer(result.get("answer", "") or ""):
+                out.add(m.group(0).lower())
     return out
 
 
@@ -111,13 +131,14 @@ def grade(result: dict, expect: dict, set_f1_cho: set[str] = frozenset(),
     cu = che_do == "cu"
     checks: list[Check] = []
     answer = result.get("answer", "")
-    neu_ra = _neu_ra(result, hop_den=not cu)
+    neu_ra = _neu_ra(result, hop_den=not cu, moi=not cu)
     if cu:
         set_f1_cho = frozenset()
 
     # ── citation ──
     if "norms_include" in expect:
-        can = {chuan_so_hieu(x) or (x or "").lower() for x in expect["norms_include"]}
+        can = {chuan_so_hieu(x, not cu) or (x or "").lower()
+               for x in expect["norms_include"]}
         if "norms_include" in set_f1_cho:
             f = _f1(neu_ra, can)
             checks.append(Check("citation", "norms_include", f >= 0.999, round(f, 3)))
@@ -138,11 +159,11 @@ def grade(result: dict, expect: dict, set_f1_cho: set[str] = frozenset(),
         checks.append(Check("validity", "as_of_date",
                             result.get("as_of_date") == expect["as_of_date"]))
     if "governing_norm" in expect:
-        can = chuan_so_hieu(expect["governing_norm"])
+        can = chuan_so_hieu(expect["governing_norm"], not cu)
         checks.append(Check("validity", "governing_norm", can in neu_ra))
     if "not_governing" in expect:
         # Văn bản KHÔNG được áp tại mốc hỏi — đây chính là bẫy sai-thời-điểm của G2′.
-        cam = chuan_so_hieu(expect["not_governing"])
+        cam = chuan_so_hieu(expect["not_governing"], not cu)
         checks.append(Check("validity", "not_governing", cam not in neu_ra))
 
     # ── content ──
