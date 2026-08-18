@@ -81,9 +81,10 @@ def build(neo, store, n: int = 60, pool: int = 4000, ty_le_situation: float = 0.
 
     items: list[Item] = []
     dem_me: dict[str, int] = {}
+    da_hoi: set[str] = set()
     stat = {"ung_vien": len(rows), "bo_vi_so_hieu": 0, "bo_vi_trung_me": 0,
             "bo_vi_khong_co_span": 0, "co_bang_chung": 0, "graph_only": 0,
-            "c1_fail": 0, "nhan_con": 0, "nhan_het": 0}
+            "c1_fail": 0, "nhan_con": 0, "nhan_het": 0, "bo_vi_trung_cau": 0}
 
     for r in rows:
         if len(items) >= n:
@@ -137,6 +138,16 @@ def build(neo, store, n: int = 60, pool: int = 4000, ty_le_situation: float = 0.
             tpl = TPL_LOOKUP
             cau = tpl.format(con=con, me=me, moi=moi)
             persona, form = "can_bo_phap_che", "lookup"
+
+        # Câu `situation` chỉ dựng từ CHỦ ĐỀ của văn bản con, cố ý giấu mọi định danh.
+        # Nên hai chuỗi hiệu lực khác nhau đi qua CÙNG một văn bản con sẽ ra câu hỏi
+        # y hệt — mà `reference` lại khác nhau (khác văn bản mẹ). Hai câu giống hệt
+        # với hai đáp án khác nhau thì hệ trả lời kiểu gì cũng trượt một câu.
+        # Đo thật: 4 câu như vậy trong một lần sinh.
+        if cau in da_hoi:
+            stat["bo_vi_trung_cau"] += 1
+            continue
+        da_hoi.add(cau)
 
         it = Item(
             id=f"G3-{len(items):04d}", question_form=form, persona=persona,

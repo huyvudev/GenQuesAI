@@ -90,6 +90,19 @@ def kiem(path: Path) -> int:
     lo = [r["id"] for r in sit if co_so_hieu(r["user_input"])]
     ok(not lo, "0 câu situation lộ số hiệu", f"{len(lo)}: {lo[:5]}")
 
+    # Hai câu hỏi GIỐNG HỆT là hai lần chấm cùng một thứ — và nếu `reference` của
+    # chúng khác nhau thì tệ hơn nhiều: hệ trả lời kiểu gì cũng trượt một câu.
+    # Đã xảy ra ở hai chỗ khác nhau (G8 quay vòng chủ đề, G3 situation dựng từ cùng
+    # một văn bản con), nên kiểm ở tầng nghiệm thu chứ đừng vá từng nhóm.
+    dem_cau = Counter(r["user_input"] for r in rows)
+    trung = [c for c, k in dem_cau.items() if k > 1]
+    xung_dot = [c for c in trung
+                if len({r.get("reference") for r in rows if r["user_input"] == c}) > 1]
+    ok(not trung, "0 câu hỏi trùng nguyên văn",
+       f"{len(trung)} câu trùng"
+       + (f", trong đó {len(xung_dot)} câu ĐÁP ÁN MÂU THUẪN" if xung_dot else "")
+       + (f": {[r['id'] for r in rows if r['user_input'] in trung][:6]}" if trung else ""))
+
     print("\nG2′ — mốc thời gian (§4.4):")
     g2 = [r for r in rows if r["group"] == "G2"]
     kinds = Counter(r.get("as_of_kind") for r in g2)

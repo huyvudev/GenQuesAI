@@ -26,12 +26,19 @@ WHERE t.da_duyet = true AND t.confidence >= $min_conf
   AND size(t.dieu_kien) >= 25 AND size(t.dieu_kien) <= 260
   AND n.so_hieu IS NOT NULL
 OPTIONAL MATCH (n)-[:HAS_PART*]->(d:Component)-[:HAS_VERSION]->(e:Expression)
-WHERE d.loai = 'Dieu' AND t.nguon_dieu_khoan CONTAINS ('Điều ' + d.so_thu_tu)
+// `CONTAINS ('Điều ' + so_thu_tu)` khớp theo TIỀN TỐ: tìm "Điều 22" thì "Điều 2"
+// cũng khớp. Cộng với `head(collect(...))` không sắp thì gold span trỏ vào một Điều
+// KHÁC HẲN, không chứa điều khoản chuyển tiếp — và `context_recall` chấm trên một
+// đoạn không trả lời được câu hỏi. Đo thật: sinh hai lần ra `Dieu 2` và `Dieu 22`.
+// `(\D.*)?` bắt buộc ký tự sau số phải KHÔNG phải chữ số, tức khớp trọn số Điều.
+WHERE d.loai = 'Dieu'
+  AND t.nguon_dieu_khoan =~ ('(?s).*Điều ' + d.so_thu_tu + '(\\D.*)?')
 RETURN n.norm_id AS norm_id, n.so_hieu AS so_hieu,
        t.rule_id AS rule_id, t.dieu_kien AS dieu_kien,
        t.van_ban_ap_dung AS ap_dung, t.nguon_dieu_khoan AS nguon,
-       t.confidence AS conf, head(collect(e.expr_id)) AS expr_id
-ORDER BY t.confidence DESC
+       // `min` thay `head(collect(...))`: xác định, không phụ thuộc thứ tự Neo4j trả về
+       t.confidence AS conf, min(e.expr_id) AS expr_id
+ORDER BY t.confidence DESC, t.rule_id
 LIMIT $pool
 """
 
