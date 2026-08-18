@@ -105,9 +105,16 @@ def main() -> int:
     from framework.grader import aggregate, grade as _grade, la_loi_quota as _is_quota_error
     from .ask_full import ask_full
 
-    def grade(res, ex):
+    def grade(res, ex, nhom=None):
+        # Set-F1 CHỈ cho G4′ — nhóm duy nhất có đáp án là DANH SÁCH, nơi thừa cũng sai
+        # như thiếu. Áp cho mọi nhóm là phạt hệ vì nhắc tới chính văn bản ĐƯỢC HỎI:
+        # câu "87/2011/TT-BNNPTNT bị thay thế bởi văn bản nào?" buộc hệ phải nhắc
+        # 87/2011 để trả lời mạch lạc, và Set-F1 tính đó là "thừa" -> F1 = 0.5 -> trượt
+        # dù đáp án hoàn toàn đúng. Đo thật: G1/G3/G4 trượt 100%, G7 trượt 79/90.
         return _grade(res, ex, che_do=args.che_do,
-                      set_f1_cho={"norms_include"} if args.che_do == "moi" else frozenset())
+                      set_f1_cho=({"norms_include"}
+                                  if args.che_do == "moi" and nhom == "G4"
+                                  else frozenset()))
 
     cases = chuyen(Path(args.eval))
     if args.n:
@@ -131,7 +138,7 @@ def main() -> int:
                              "loi": f"{type(e).__name__}: {e}"[:140]})
             continue
 
-        checks = grade(res, c["expect"])
+        checks = grade(res, c["expect"], c["category"])
         all_checks.extend(checks)
         cq = do_chunk(res, c, k=args.k)
         row = {
