@@ -23,11 +23,44 @@ from dataclasses import dataclass, field
 from .common import core_so_hieu
 from .gold import chunk_span, gate_c1
 
+# C5 lượt 1 (2026-08-19, 10 ca mẫu): 0/10 xác nhận là xung đột thật. Hai nguyên
+# nhân giải thích 9/10 ca sai/không chắc — cả hai đều tự động hoá được, khác với
+# điều kiện (3) (hệ quả pháp lý khác nhau) mà docstring module đã nói rõ là không
+# tự động hoá được:
+#
+#   a) Điều kiện (1) "cùng còn hiệu lực" chỉ được xấp xỉ qua `hieu_luc_den is None`
+#      của MỘT văn bản, không kiểm tra văn bản kia có phải chính là bên đã SỬA ĐỔI/
+#      THAY THẾ/BÃI BỎ nó không. 4/10 ca sai (G6-0014, 0015, 0021, 0023) là cặp mà
+#      một bên bãi bỏ trực tiếp bên kia (hoặc điều khoản liên quan) — không còn là
+#      hai quy định song song để "xung đột". `tac_dong_toi()` đã có sẵn (G4 dùng)
+#      và trả lời đúng câu hỏi này.
+#   b) Điều kiện (2) "cùng điều chỉnh một nội dung cụ thể" dùng proxy Điều TRÙNG
+#      TIÊU ĐỀ — nhưng các tiêu đề như "Hiệu lực thi hành", "Trách nhiệm thi hành",
+#      "Tổ chức thực hiện" là mục THỦ TỤC xuất hiện gần như trong MỌI văn bản luật,
+#      trùng tiêu đề ở đây không nói lên điều gì về nội dung. 3-4/10 ca sai/không
+#      chắc (G6-0001, 0005, 0012, 0020) rơi đúng vào nhóm tiêu đề này.
+#
+# Vá cả hai. Điều kiện (3) vẫn KHÔNG tự động hoá được — mọi item vẫn ra
+# `status="cho_review"`, người vẫn phải duyệt, nhưng bể ứng viên đưa cho người
+# duyệt giờ sạch hơn nhiều thay vì đa số là rác có thể loại bằng máy.
+_TIEU_DE_THU_TUC = (
+    "hiệu lực thi hành", "trách nhiệm thi hành", "tổ chức thực hiện",
+    "điều khoản thi hành", "điều khoản chung",
+)
+
+
+def _la_thu_tuc(tieu_de: str) -> bool:
+    t = tieu_de.lower()
+    return any(t == p or t.startswith(p + " ") or (p in t and len(t) < len(p) + 6)
+               for p in _TIEU_DE_THU_TUC)
+
+
 def ung_vien(c, pool: int, cap: int) -> list[dict]:
     """Bản duyệt `Corpus` của SELECT cũ (A1).
 
-    Cặp (con hướng dẫn mẹ, khác cấp bậc) có hai Điều CÙNG TIÊU ĐỀ và cùng còn hiệu
-    lực — ứng viên xung đột, người duyệt phán điều kiện (3) §4.2.
+    Cặp (con hướng dẫn mẹ, khác cấp bậc) có hai Điều CÙNG TIÊU ĐỀ, cùng còn hiệu
+    lực, và KHÔNG bên nào đã tác động (sửa đổi/thay thế/bãi bỏ) bên kia — ứng viên
+    xung đột, người duyệt phán điều kiện (3) §4.2.
     `cap_bac` phải do corpus khai; framework không suy từ loai_vb.
     """
     from framework import truy_van as tv
@@ -41,6 +74,11 @@ def ung_vien(c, pool: int, cap: int) -> list[dict]:
             if not (me and me.so_hieu and me.cap_bac is not None
                     and me.cap_bac != con.cap_bac):
                 continue
+            # (1) một bên đã sửa đổi/thay thế/bãi bỏ bên kia -> không còn là hai
+            # quy định SONG SONG cùng hiệu lực, loại ngay, không đợi người duyệt.
+            if (me.norm_id in tv.tac_dong_toi(c, con.norm_id)
+                    or con.norm_id in tv.tac_dong_toi(c, me.norm_id)):
+                continue
             cap_ds.append((con, me))
     cap_ds.sort(key=lambda x: (x[0].norm_id, x[1].norm_id))
     cap_ds = cap_ds[:pool]
@@ -50,6 +88,8 @@ def ung_vien(c, pool: int, cap: int) -> list[dict]:
         for d in tv.moi_thanh_phan(c, norm_id):
             if d.loai != "Dieu" or not d.tieu_de or len(d.tieu_de) < 15:
                 continue
+            if _la_thu_tuc(d.tieu_de):          # (2) tiêu đề thủ tục -> không phải
+                continue                        # bằng chứng "cùng nội dung cụ thể"
             for e in tv.cac_ban(c, d.component_id):
                 if e.hieu_luc_den is None:
                     ra.setdefault(d.tieu_de.lower(), (d.tieu_de, e.expression_id))
