@@ -41,8 +41,13 @@ def test_neo_dung_ban_bo_de_da_freeze(ky_vong_meta):
 
 
 def test_du_400_item(ky_vong, ky_vong_meta):
-    assert ky_vong_meta["so_item"] == 400
-    assert len(ky_vong) == 400
+    """Không còn đúng nghĩa đen "400" — G6 (2026-08-19) cố ý lọc chặt hơn để đổi lấy
+    ứng viên sạch (25 câu sạch hơn 200 câu nhiễu), quota 25 nhưng có thể sinh ít hơn
+    (19-25 tuỳ đợt corpus). 7 nhóm còn lại vẫn PHẢI đủ quota — chỉ nới đúng phần G6."""
+    QUOTA_TRU_G6 = 50 + 80 + 60 + 40 + 30 + 90 + 25       # 8 nhóm trừ G6
+    assert ky_vong_meta["so_item"] >= QUOTA_TRU_G6
+    assert ky_vong_meta["so_item"] <= QUOTA_TRU_G6 + 25   # +25 = quota tối đa của G6
+    assert len(ky_vong) == ky_vong_meta["so_item"]
 
 
 def test_moi_nhom_sinh_du_loai_ky_vong(ky_vong):
@@ -111,5 +116,10 @@ def test_G2_co_du_ba_loai_moc_thoi_gian(ky_vong, bo_de):
 
 def test_so_luong_ky_vong_khong_tut(ky_vong_meta):
     """Chốt ngược: sửa bộ trích làm rơi một nhánh thì số sự kiện tụt, và test này đỏ
-    trước khi ai kịp tin rằng "vẫn xanh nghĩa là vẫn ổn"."""
-    assert ky_vong_meta["so_su_kien"] >= 2016
+    trước khi ai kịp tin rằng "vẫn xanh nghĩa là vẫn ổn".
+
+    Ngưỡng hạ 2016 -> 1900 (2026-08-19): G6 cố ý sinh ít hơn quota (xem
+    `test_du_400_item`), 400 -> 394 item kéo tổng sự kiện xuống ~1962. Ngưỡng vẫn
+    phải THẤP HƠN quan sát thực tế — nới đúng bằng số đo được thì test mất tác dụng
+    chốt ngược cho lần sau."""
+    assert ky_vong_meta["so_su_kien"] >= 1900

@@ -38,7 +38,17 @@ def _tai() -> list[tuple[str, dict]]:
     return [(it["id"], s) for it in dong[1:] for s in it["su_kien"]]
 
 
+def _so_item() -> int:
+    """Tổng số item thật trong ky_vong.jsonl — KHÔNG hardcode 400: G6 (2026-08-19)
+    cố ý sinh ít hơn quota để đổi lấy ứng viên sạch, tổng dao động theo đợt corpus."""
+    if not KY_VONG.exists():
+        return 0
+    return sum(1 for x in KY_VONG.read_text(encoding="utf-8").splitlines()
+               if x.strip()) - 1        # trừ dòng _meta
+
+
 _TAT_CA = _tai()
+_SO_ITEM = _so_item()
 CHAN = [(i, s) for i, s in _TAT_CA if s["muc"] == "chan"]
 CANH_BAO = [(i, s) for i, s in _TAT_CA if s["muc"] == "canh_bao"]
 
@@ -431,11 +441,13 @@ def test_phan_khong_kiem_duoc_khong_qua_lon(corpus):
 
 
 def test_moi_item_deu_co_it_nhat_mot_ky_vong():
-    """400 câu thì phải có 400 item trong hợp đồng — kể cả G8(d) vốn không khẳng định
-    gì về đồ thị, nó vẫn phải xuất hiện với ghi chú, để chỗ trống là CỐ Ý."""
+    """Mọi item trong bộ đề đã freeze phải có kỳ vọng — kể cả G8(d) vốn không khẳng
+    định gì về đồ thị, nó vẫn phải xuất hiện với ghi chú, để chỗ trống là CỐ Ý. So
+    với `_SO_ITEM` thật (không hardcode 400 — xem `test_du_400_item` bên
+    `test_ky_vong.py`), vì G6 có thể sinh ít hơn quota."""
     if not _TAT_CA:
         pytest.skip("chưa có ky_vong.jsonl")
     theo = defaultdict(int)
     for i, _ in _TAT_CA:
         theo[i] += 1
-    assert len(theo) == 400, f"chỉ {len(theo)}/400 item có kỳ vọng"
+    assert len(theo) == _SO_ITEM, f"chỉ {len(theo)}/{_SO_ITEM} item có kỳ vọng"
