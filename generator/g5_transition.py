@@ -15,7 +15,7 @@ import random
 from dataclasses import dataclass, field
 
 from .common import co_so_hieu, core_so_hieu
-from .gold import chunk_span, gate_c1
+from .gold import chunk_span_khop, gate_c1
 
 MAX_MOI_NORM = 3
 
@@ -115,7 +115,9 @@ def build(c, store, n: int = 30, pool: int = 900, min_conf: float = 0.9,
 
         span, ev = None, "graph_only"
         if r["expr_id"]:
-            span, _ = chunk_span(store, r["expr_id"], 0)
+            # Điều dài chẻ nhiều part trên Qdrant — chọn part CHỨA `ap_dung`, không
+            # mặc định part 0 (G5-0004: khoản đúng nằm ở part 1, part 0 nói khoản khác).
+            span, _ = chunk_span_khop(store, r["expr_id"], ap_dung)
             if span:
                 ok, ly_do = gate_c1(store, span)
                 if not ok:
