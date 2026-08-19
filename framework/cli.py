@@ -61,7 +61,7 @@ def soi(nguon: str | None, dung_neo4j: bool) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     setup_stdout()
     ap = argparse.ArgumentParser(prog="framework")
     sub = ap.add_subparsers(dest="lenh", required=True)
@@ -71,7 +71,7 @@ def main() -> int:
     s = sub.add_parser("soi", help="báo cáo năng lực corpus")
     s.add_argument("nguon", nargs="?", default="out/corpus")
     s.add_argument("--neo4j", action="store_true")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     return xuat(a.ra, a.gioi_han) if a.lenh == "xuat" else soi(a.nguon, a.neo4j)
 
 

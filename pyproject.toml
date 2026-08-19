@@ -16,8 +16,11 @@ dependencies = []
 neo4j = ["neo4j>=5", "qdrant-client>=1.7"]
 dev = ["pytest>=8"]
 
+[project.scripts]
+genquesai = "genquesai.cli:main"
+
 [tool.setuptools]
-packages = ["framework", "generator", "evaluate"]
+packages = ["framework", "generator", "evaluate", "genquesai"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

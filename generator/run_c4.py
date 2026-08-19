@@ -6,8 +6,8 @@ Gọi LLM một lần cho mỗi item (trừ G6/G8) — ~350 lời gọi trên b�
 """
 from __future__ import annotations
 
+import argparse
 import json
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -15,9 +15,11 @@ from .common import setup_stdout
 from . import gate_c4, paraphrase
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     setup_stdout()
-    path = Path(sys.argv[1] if len(sys.argv) > 1 else "out/eval_set.jsonl")
+    ap = argparse.ArgumentParser(prog="python -m generator.run_c4")
+    ap.add_argument("eval", nargs="?", default="out/eval_set.jsonl")
+    path = Path(ap.parse_args(argv).eval)
     items = [json.loads(l) for l in path.open(encoding="utf-8")]
     print(f"{path} — {len(items)} item")
 

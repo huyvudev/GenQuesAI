@@ -32,3 +32,6 @@ out/corpus/
 # không tồn tại"), thứ chỉ đối chiếu được với đồ thị ĐẦY ĐỦ, không tái lập offline.
 tests/golden/fixture/*
 !tests/golden/fixture/pham_vi.json
+
+# `pip install -e .`
+*.egg-info/

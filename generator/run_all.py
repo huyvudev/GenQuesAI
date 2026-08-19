@@ -37,16 +37,16 @@ NHOM = [
 ]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     setup_stdout()
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(prog="python -m generator.run_all")
     ap.add_argument("--out", default="out/eval_set.jsonl")
     ap.add_argument("--paraphrase", default=None, help="'all' hoặc số câu mỗi nhóm")
     ap.add_argument("--chi", default=None, help="chỉ chạy các nhóm này, vd 'G3,G5'")
     # A1: bộ sinh đọc `Corpus`. Mặc định nạp từ Neo4j (qua Neo4jLoader); truyền
     # --corpus <thư mục JSONL> thì chạy KHÔNG cần Neo4j — đó là toàn bộ ý nghĩa của A1.
     ap.add_argument("--corpus", default=None, help="thư mục corpus JSONL (bỏ = Neo4j)")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     corpus, store = nap_corpus(args.corpus), open_qdrant()
     snapshot = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")

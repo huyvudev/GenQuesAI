@@ -108,9 +108,9 @@ def triage(checks, cq: dict) -> str:
     return "synthesis"                         # gold có mặt mà vẫn trả lời sai
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     setup_stdout()
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(prog="python -m evaluate.score")
     ap.add_argument("--eval", default="out/eval_set.jsonl")
     ap.add_argument("--n", type=int, help="giới hạn số câu MỖI NHÓM (để thử)")
     ap.add_argument("--out", default="out/ket_qua_eval.json")
@@ -122,7 +122,7 @@ def main() -> int:
                     help="hệ được đo (B): 'legal_rag' = hộp trắng trên máy này; "
                          "'http' = hộp đen qua endpoint POST JSON (cần --url)")
     ap.add_argument("--url", help="endpoint cho --adapter http")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     # Grader của FRAMEWORK, không import từ legal-rag nữa: framework phải chạy được
     # trên máy không có repo đó (ROADMAP A3). `che_do="cu"` tái lập đúng ngữ nghĩa

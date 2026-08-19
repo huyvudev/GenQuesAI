@@ -78,14 +78,14 @@ def cham(csv_path: Path) -> int:
     return 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     setup_stdout()
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(prog="python -m generator.run_c5")
     ap.add_argument("--eval", default="out/eval_set.jsonl")
     ap.add_argument("--out", default="out/review_c5.html")
     ap.add_argument("--n", type=int, default=80, help="cỡ mẫu, chia đều các nhóm")
     ap.add_argument("--cham", help="đường dẫn CSV do phiếu xuất ra")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
     if args.cham:
         return cham(Path(args.cham))
     return dung(Path(args.eval), Path(args.out), args.n)
