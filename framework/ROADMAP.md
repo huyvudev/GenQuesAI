@@ -20,6 +20,7 @@
 | Phiếu review C5 + tính ceiling | `generator/run_c5.py` — 3 lượt đã chạy (AI duyệt), lượt 4 đang chờ người ngoài dự án |
 | Schema corpus trung gian + 2 loader + báo cáo năng lực | `framework/` |
 | 2 mốc đo baseline trên bộ đề đã freeze | `out/ket_qua_*.json` |
+| CLI hợp nhất, cài qua `pip install -e .` | `genquesai/` — `corpus`/`gen`/`run`/`report` (C) |
 
 ---
 
@@ -94,12 +95,18 @@ legal_rag|http [--url ...]`).
 
 ---
 
-## C — Đóng gói
+## C — Đóng gói  ✅ **PHẦN LỚN XONG** (2026-08-19)
 
-`pyproject.toml` · CLI hợp nhất (`corpus soi` / `gen` / `run` / `report`) · cấu hình
-bằng file thay cho biến môi trường · tài liệu cho người ngoài.
+`pyproject.toml` với `[project.scripts] genquesai` ✅ · CLI hợp nhất `genquesai
+corpus/gen/run/report` (router mỏng trên `genquesai/cli.py`, giao thẳng argv cho
+`framework.cli`/`generator.run_all`/`evaluate.score`, không khai lại cờ) ✅ · README gốc
+cho người ngoài ✅ · cấu hình bằng file thay cho biến môi trường — **CHƯA làm**, để lại
+làm riêng vì rủi ro hơn phần còn lại (đổi cách `generator/common.py::nap_env()` đọc cấu
+hình, chạm nhiều nơi hơn một router).
 
-Phần này thẳng, không rủi ro kỹ thuật.
+Đúng như dự đoán: không có rủi ro kỹ thuật ở phần đã làm. `pytest` xanh xuyên suốt,
+kiểm cả hai đường gọi (`python -m genquesai.cli` và lệnh `genquesai` cài qua
+`pip install -e .`) cho kết quả giống hệt.
 
 ---
 
@@ -125,10 +132,12 @@ sai đối tượng. Báo cáo hai con số tách rời: *độ phủ* (kho rộ
 
 ```
 A3 ──► A2 ──► A1 ──► B ──► C ──► D
- ✅      ✅      ✅     ✅    ○      ○
+ ✅      ✅      ✅     ✅    ✅*     ○
                                  ▲
 C5 (cần người, chạy song song) ──┘
    ba lượt AI duyệt xong, lượt kế chờ người ngoài dự án
+
+* C còn sub-goal "cấu hình bằng file" chưa làm, nhưng không chặn D.
 ```
 
 **C5 chặn D và nên bắt đầu ngay.** Không phải vì thủ tục: nếu C5 cho thấy một nhóm dưới
