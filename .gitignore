@@ -35,3 +35,6 @@ tests/golden/fixture/*
 
 # `pip install -e .`
 *.egg-info/
+
+# cấu hình riêng từng máy (ROADMAP C) — mẫu ở genquesai.example.toml
+/genquesai.toml

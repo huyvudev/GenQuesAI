@@ -47,6 +47,17 @@ tuyến; logic thật nằm ở `framework/cli.py`, `generator/run_all.py`, `eva
 
 ## Cấu hình
 
-Hiện tại bằng biến môi trường (`LEGAL_RAG_ROOT`, `.env` của hệ RAG đang nạp) — xem
-`generator/common.py::nap_env()`. Chuyển sang cấu hình bằng file vẫn nằm ở ROADMAP,
-chưa làm.
+Chỉ cần khi dùng `generator/` hoặc phần hộp-trắng của `evaluate/` — trỏ tới repo chứa
+hệ RAG cần nạp (`framework/` một mình không cần gì cả):
+
+```bash
+cp genquesai.example.toml genquesai.toml   # rồi sửa legal_rag_root cho đúng máy
+```
+
+`genquesai.toml` không commit (xem `.gitignore` — mỗi máy một bản). Biến môi trường
+`LEGAL_RAG_ROOT` vẫn ghi đè được lên file, ưu tiên cao hơn — tiện cho CI hoặc thử một
+đường dẫn khác không muốn sửa file. Thứ tự đầy đủ và mặc định khi không có gì: xem
+`framework/config.py`.
+
+`.env` của chính hệ RAG (Neo4j/Qdrant/API key) vẫn nằm ở repo đó, không phải ở đây —
+xem `generator/common.py::nap_env()`.

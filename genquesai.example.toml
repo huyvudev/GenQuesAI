@@ -1,0 +1,9 @@
+# Chép thành `genquesai.toml` (không commit — xem .gitignore) rồi sửa đường dẫn.
+# Không có file này thì framework dùng mặc định trong code; biến môi trường
+# LEGAL_RAG_ROOT vẫn ghi đè được, ưu tiên cao hơn file — dùng cho CI/thử nghiệm nhanh.
+# Chi tiết thứ tự ưu tiên: framework/config.py.
+
+[paths]
+# Đường dẫn tới repo chứa hệ RAG cần nạp (Neo4j + Qdrant) — chỉ cần khi dùng
+# generator/ hoặc phần hộp-trắng của evaluate/. framework/ một mình không cần.
+legal_rag_root = "D:/Project/Chatbot-Law/chatbot"

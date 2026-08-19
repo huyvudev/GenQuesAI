@@ -14,6 +14,7 @@ import uuid
 from pathlib import Path
 
 from framework import so_hieu as _sh
+from framework.config import legal_rag_root
 
 _stdout_da_boc = False
 
@@ -31,7 +32,9 @@ def setup_stdout() -> None:
     _stdout_da_boc = True
 
 # Code của hệ RAG nằm ở repo khác; nạp bằng đường dẫn thay vì cài đặt.
-LEGAL_RAG_ROOT = Path(os.environ.get("LEGAL_RAG_ROOT", r"D:\Project\Chatbot-Law\chatbot"))
+# Nguồn giá trị: framework/config.py (ROADMAP C — cấu hình bằng file, biến môi
+# trường LEGAL_RAG_ROOT vẫn ghi đè được cho CI/thử nghiệm nhanh).
+LEGAL_RAG_ROOT = legal_rag_root()
 if str(LEGAL_RAG_ROOT) not in sys.path:
     sys.path.insert(0, str(LEGAL_RAG_ROOT))
 
