@@ -43,9 +43,37 @@ from .gold import chunk_span, gate_c1
 # Vá cả hai. Điều kiện (3) vẫn KHÔNG tự động hoá được — mọi item vẫn ra
 # `status="cho_review"`, người vẫn phải duyệt, nhưng bể ứng viên đưa cho người
 # duyệt giờ sạch hơn nhiều thay vì đa số là rác có thể loại bằng máy.
+#
+# C5 lượt 2 (2026-08-19, 10 ca mẫu MỚI sau bản vá trên): vẫn 0/10 xung đột thật, dù
+# tiêu đề không còn thuộc nhóm thủ tục ở trên (đúng như thiết kế). Đọc kỹ nội dung:
+# 8/10 ca là "chỉ khác mức độ chi tiết" hoặc "khác nội dung cụ thể dù cùng tiêu đề" —
+# và điểm chung: `con` HƯỚNG DẪN (GUIDED_BY) `me` theo đúng cách candidate được dựng,
+# nên `con` LUÔN có xu hướng elaborate `me` một cách nhất quán chứ không mâu thuẫn —
+# đây là bản chất quan hệ hướng dẫn, không phải lỗi trích riêng lẻ. Trong 8 ca đó,
+# "Đối tượng áp dụng" và "Phạm vi điều chỉnh" (G6-0001, 0014, 0015, 0020 — 4/8) là
+# tiêu đề Điều 1-2 GẦN NHƯ MỌI văn bản QPPL đều có theo thể thức chuẩn (NĐ 34/2016/NĐ-CP
+# về kỹ thuật soạn thảo) — cùng bản chất thủ tục/kết cấu như nhóm đã loại ở trên, chỉ
+# là bị bỏ sót. "Giải thích từ ngữ" (Điều 3, cũng chuẩn thể thức) thêm vào cho nhất
+# quán dù ca mẫu (G6-0012) rơi vào lỗi khác (điều kiện 1, xem dưới).
+#
+# ĐÃ THỬ và KHÔNG dùng: so độ trùng lặp nội dung (Jaccard/overlap trên tập từ, và
+# `framework.doi_chieu.do_phu` cửa sổ trượt) giữa hai đoạn Điều, hy vọng tách "chỉ
+# khác chi tiết" (elaborate, nên giữ) khỏi "khác nội dung cụ thể" (nên loại). Đo trên
+# 10 ca đã biết nhãn: cả hai độ đo cho điểm CHỒNG LẤN giữa hai nhóm (vd G6-0015 —
+# elaborate, nên giữ — điểm THẤP hơn G6-0010 — khác nội dung, nên loại) — không tách
+# được, và ngưỡng bất kỳ sẽ vừa lọt sai vừa loại nhầm. `do_phu` (thiết kế cho khớp
+# NGUYÊN VĂN của A2) gần như luôn ra 0 giữa hai văn bản khác nhau dù cùng chủ đề —
+# sai công cụ. Không đoán liều một ngưỡng chưa kiểm chứng được; ghi lại để người sau
+# khỏi thử lại đúng hai hướng đã đi vào ngõ cụt này.
+#
+# Vấn đề gốc (elaborate do bản chất GUIDED_BY, không phải do chọn nhầm tiêu đề) VẪN
+# CÒN sau bản vá này — cần nguồn ứng viên khác (vd cặp văn bản KHÔNG hướng dẫn nhau
+# nhưng cùng chạm một vùng quản lý) hoặc so nội dung bằng embedding ngữ nghĩa thay vì
+# từ vựng. Việc thiết kế lớn hơn, chưa làm ở đây.
 _TIEU_DE_THU_TUC = (
     "hiệu lực thi hành", "trách nhiệm thi hành", "tổ chức thực hiện",
     "điều khoản thi hành", "điều khoản chung",
+    "phạm vi điều chỉnh", "đối tượng áp dụng", "giải thích từ ngữ",
 )
 
 
