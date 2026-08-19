@@ -13,9 +13,11 @@
 |---|---|
 | 8 nhóm câu hỏi + lý do từng nhóm | tài sản chính, không phụ thuộc hệ nào |
 | Hợp đồng grounding I1–I4, cổng C1–C5 | `generator/` |
-| Bộ sinh 400 câu, đã freeze | gắn chặt schema Neo4j |
-| Tầng chấm + triage | gắn chặt `legal-rag` |
-| Phiếu review C5 + tính ceiling | `generator/run_c5.py` |
+| Bộ sinh 400 câu (394 kể từ khi G6 siết điều kiện), sinh lại được | đọc `Corpus`, không còn khoá vào Neo4j (A1) |
+| Tầng chấm + triage, tự chứa | `framework/grader.py` (A3), không cần cài `Chatbot-Law` |
+| Hợp đồng adapter cho hệ được đo, 2 adapter mẫu | `framework/adapter.py` + `evaluate/adapters.py` (B) |
+| Đối chiếu gold theo nội dung, không cần chung id | `framework/doi_chieu.py` (A2) |
+| Phiếu review C5 + tính ceiling | `generator/run_c5.py` — 3 lượt đã chạy (AI duyệt), lượt 4 đang chờ người ngoài dự án |
 | Schema corpus trung gian + 2 loader + báo cáo năng lực | `framework/` |
 | 2 mốc đo baseline trên bộ đề đã freeze | `out/ket_qua_*.json` |
 
@@ -23,25 +25,25 @@
 
 ## A — Gỡ ràng buộc  *(chặn mọi thứ khác)*
 
-### A3. Tầng chấm tự chứa  ← **làm trước, nhỏ nhất, gỡ được nhiều nhất**
+### A3. Tầng chấm tự chứa  ✅ **XONG**
 
-`evaluate/score.py` hiện `import legal_rag.evaluation.grader`. Nghĩa là **ai cài
-framework cũng phải có sẵn repo `Chatbot-Law` trên máy** — không chấp nhận được.
+`framework/grader.py` — 106 dòng thuần chép từ `legal_rag.evaluation.grader`, không
+LLM, không DB, giữ nguyên 4 chiều `citation · validity · content · behavior` để số liệu
+cũ vẫn so được. `evaluate/score.py` không còn `import legal_rag...` trực tiếp nào.
 
-`grader.py` là 106 dòng thuần, không LLM, không DB. Chép vào framework, ghi rõ nguồn,
-giữ nguyên 4 chiều `citation · validity · content · behavior` để số liệu cũ vẫn so được.
+Framework cài được trên máy trắng — đưa cho người khác thử được ngay cả khi A1 chưa
+xong (đúng thứ tự đã định: A3 trước, nhỏ nhất, gỡ được nhiều nhất).
 
-Xong A3 thì framework cài được trên máy trắng — **đưa cho người khác thử được ngay cả
-khi A1 chưa xong**.
+### A2. Gold span đối chiếu theo NỘI DUNG, bỏ `chunk_id`  ✅ **XONG** (2026-08-19)
 
-### A2. Gold span đối chiếu theo NỘI DUNG, bỏ `chunk_id`
+`framework/doi_chieu.py` — so chồng lấn chuỗi (cửa sổ trượt 64 ký tự, chuẩn hoá +
+casefold) giữa gold span và `retrieved_contexts`, thay vì so `chunk_id`. `chunk_id`
+giữ làm đường nhanh tuỳ chọn (trúng thì khỏi đo chuỗi); `chunk_text_sha256` của cổng
+C1 vẫn lo ca *id còn nguyên nhưng nội dung đã đổi*.
 
-`chunk_id = point_id(expr_id, part)` là id Qdrant của `legal-rag`, vô nghĩa với hệ
-khác. Chuyển sang so chồng lấn chuỗi giữa gold span và `retrieved_contexts`.
-
-Hệ quả: `recall` từ nhị phân thành liên tục. Chấp nhận được, và phản ánh đúng hơn.
-Giữ `chunk_id` làm đường nhanh tuỳ chọn, giữ `chunk_text_sha256` vì nó bắt được ca
-*id còn nguyên nhưng nội dung đã đổi* — lỗi im lặng duy nhất mọi cổng khác không thấy.
+Hệ quả đúng như dự tính: `recall` từ nhị phân thành liên tục. Đã kiểm với hộp trắng
+legal-rag: đường id và đường nội dung cho cùng kết quả trên các ca đối chiếu được
+(xem `tests/test_doi_chieu.py`).
 
 ### A1. Bộ sinh đọc `Corpus` thay vì Neo4j  ✅ **XONG** (2026-08-18)
 
@@ -73,14 +75,17 @@ Nền cho A1 đã có: `framework/truy_van.py` dịch một lần ngữ nghĩa C
 
 ---
 
-## B — Hợp đồng hệ được đo
+## B — Hợp đồng hệ được đo  ✅ **XONG** (2026-08-19)
 
-**B1.** `LegalRAGAdapter.ask(question, as_of_date) -> RAGResult`
-với `RAGResult{answer, retrieved_contexts, citations?, as_of_date?}`.
+**B1.** `framework/adapter.py::RAGAdapter.ask(question, as_of_date) -> RAGResult`
+với `RAGResult{answer, retrieved_contexts, retrieved_ids?, citations?, as_of_date?}`.
 
-**B2.** Đối chiếu `retrieved_contexts` (chuỗi nguyên văn) với gold span bằng chồng lấn.
+**B2.** Đối chiếu `retrieved_contexts` (chuỗi nguyên văn) với gold span bằng chồng lấn
+— chính là A2, `framework/doi_chieu.py`.
 
-**B3.** Hai adapter mẫu: `legal-rag` (hộp trắng) + adapter HTTP chung (hộp đen).
+**B3.** Hai adapter mẫu trong `evaluate/adapters.py`: `LegalRagAdapter` (hộp trắng) +
+`HTTPAdapter` trong `framework/adapter.py` (hộp đen, chọn qua `score.py --adapter
+legal_rag|http [--url ...]`).
 
 > B3 quan trọng hơn vẻ ngoài: **adapter thứ hai là thứ duy nhất chứng minh hợp đồng
 > đúng.** Cùng lý do đã viết `JsonlLoader` — một loader thì luôn vừa khít với chính nó,
@@ -120,17 +125,36 @@ sai đối tượng. Báo cáo hai con số tách rời: *độ phủ* (kho rộ
 
 ```
 A3 ──► A2 ──► A1 ──► B ──► C ──► D
+ ✅      ✅      ✅     ✅    ○      ○
                                  ▲
 C5 (cần người, chạy song song) ──┘
+   ba lượt AI duyệt xong, lượt kế chờ người ngoài dự án
 ```
 
 **C5 chặn D và nên bắt đầu ngay.** Không phải vì thủ tục: nếu C5 cho thấy một nhóm dưới
 95% thì phải **sửa bộ sinh**, mà sửa xong mới đóng gói được. Đóng gói trước rồi phát
 hiện G4′ có 30% đáp án sai thì phải thu hồi bản đã phát hành.
 
+**Trạng thái C5 (2026-08-19):** ba lượt AI duyệt thay (không tính vào D2 — D2 đòi người
+ngoài dự án) đã tìm và vá được G1/G3/G5/G6 trong `generator/`; ceiling đo được tăng dần
+78.8% → 72.5% (mẫu khác, không phải hồi quy) → 81.2%. Còn 2 khoảng trống KHÔNG sửa được
+từ `generator/` — cần báo phía Chatbot-Law: (1) một số quan hệ SUA_DOI/THAY_THE/BAI_BO
+không có trong đồ thị dù có trên vbpl.vn (G4-0025, G4-0039, G6-0012 kiểu); (2)
+`Expression.hieu_luc_den` không cập nhật kịp các đợt bãi bỏ MỘT PHẦN (còn ~20% ca G3).
+G6 còn một vấn đề thiết kế chưa giải: quan hệ hướng dẫn (`con` GUIDED_BY `me`) khiến
+`con` luôn elaborate `me` một cách nhất quán — lọc tiêu đề Điều không đủ để tách xung
+đột thật khỏi quan hệ hướng dẫn bình thường; cần đổi nguồn ứng viên hoặc so nội dung
+bằng ngữ nghĩa. Chi tiết từng lượt: `c5-review-{1,2,3}-ket-qua` trong memory dự án.
+
+Phiếu review C5 mới nhất (`out/review_c5.html`, snapshot `2026-08-19T06:45:52Z`) đã bàn
+giao cho người ngoài dự án — D2 coi là xong khi có `out/c5_ket_qua.csv` từ lượt đó.
+
 ---
 
-## Ba câu hỏi chưa trả lời được — chặn A1
+## Ba câu hỏi chưa trả lời được — chặn việc CHUYỂN sang corpus khác
+
+(Không chặn A1 — A1 đã xong trên một corpus. Chặn bước sau: dùng framework cho nhà
+phát triển khác, corpus khác. Chưa cấp bách so với C5/D đang làm.)
 
 1. **Thang `cap_bac` chuẩn?** (Hiến pháp=1, Luật=2…) và quy đổi từ thang riêng của từng
    corpus ra sao. Không có thì G6 không chuyển sang corpus khác được.
