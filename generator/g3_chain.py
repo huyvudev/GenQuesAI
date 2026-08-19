@@ -8,6 +8,16 @@
 văn bản hướng dẫn không đương nhiên hết hiệu lực khi văn bản mẹ bị thay, nên tự suy
 sẽ sai. Đo trên 3.000 ca: 2.038 con còn hiệu lực / 938 hết / 24 một phần.
 Ca "một phần" bị loại — không phát biểu được một đáp án đơn trị.
+
+C5 lượt 2 (2026-08-19, 10 ca mẫu): 7/10 ca nhãn "còn hiệu lực toàn bộ" (mo==tong) thực ra
+đã "hết hiệu lực MỘT PHẦN" theo vbpl.vn — bộ lọc trên KHÔNG bắt được vì dựa hoàn toàn vào
+`Expression.hieu_luc_den` của corpus, và trường đó không cập nhật kịp các đợt bãi bỏ sau
+này (khoảng trống dữ liệu, không phải lỗi lọc). Đối chiếu 8 ca sai: 4/8 CÓ dấu vết trong
+đồ thị (một văn bản khác có quan hệ SUA_DOI/THAY_THE/BAI_BO trỏ tới `con`, dù
+`hieu_luc_den` không phản ánh) — 4/8 còn lại (kể cả ca mâu thuẫn nặng nhất) không có tín
+hiệu gì trong corpus, không cách nào bắt được từ trong này. Vá phần bắt được được: nhãn
+"còn hiệu lực toàn bộ" giờ đòi thêm điều kiện KHÔNG văn bản nào từng tác động tới `con`
+— rẻ, và loại được khoảng nửa số ca sai đã đo. Nửa còn lại vẫn là giới hạn dữ liệu.
 """
 from __future__ import annotations
 
@@ -73,6 +83,13 @@ def ung_vien(c, pool: int) -> list[dict]:
                 if comp.loai == "Dieu":
                     (ex_mo if con_mo else ex_bat_ky).append(e.expression_id)
         if tong == 0 or not (mo == tong or mo == 0):
+            continue
+        # Nhãn "còn hiệu lực toàn bộ" (mo==tong) dựa trên hieu_luc_den có thể sai khi
+        # dữ liệu chưa cập nhật đợt bãi bỏ MỘT PHẦN sau này (C5 lượt 2). Có văn bản
+        # khác tác động (SUA_DOI/THAY_THE/BAI_BO), bất kể nguồn nào (§9), là dấu hiệu
+        # KHÔNG nên tin nhãn "toàn bộ". Không kiểm nhánh mo==0 ("đã hết") — dấu vết tác
+        # động ở đó chỉ CỦNG CỐ nhãn, không mâu thuẫn.
+        if mo == tong and tv.tac_dong_toi(c, con.norm_id, nguon="ca_hai"):
             continue
         expr = min(ex_mo) if ex_mo else (min(ex_bat_ky) if ex_bat_ky else None)
         kq.append({
