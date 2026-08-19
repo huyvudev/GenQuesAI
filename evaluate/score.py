@@ -41,34 +41,56 @@ def _f1(du_doan: set, that: set) -> float:
 
 
 def do_chunk(res: dict, case: dict, k: int = 12) -> dict:
-    """Đo truy hồi ở cấp chunk + phân loại nguyên nhân sai (triage Mục 8)."""
-    gold = set(case["_gold_chunks"])
-    bay = set(case["_distractors"])
-    lay = res.get("retrieved_chunks", []) or []
-    topk = lay[:k]
+    """Đo truy hồi ở cấp chunk + phân loại nguyên nhân sai (triage Mục 8).
 
-    if not gold:
+    A2: đối chiếu theo NỘI DUNG (`framework.doi_chieu`), id chỉ còn là đường nhanh.
+    Nhờ đó hệ không chung không gian id với corpus — hộp đen, chunk khác cách — vẫn
+    đo được recall. Hệ quả cần biết khi đọc số: recall thành LIÊN TỤC (độ phủ 0..1
+    của từng span) thay vì nhị phân; với hộp trắng legal-rag hai đường cho cùng kết
+    quả vì id trúng là phủ 1.0.
+    """
+    from framework.doi_chieu import doi_chieu_gold
+
+    gold_spans = case.get("_gold_spans") or [{"chunk_id": c}
+                                             for c in case["_gold_chunks"]]
+    gold_texts = case.get("_gold_texts") or []
+    ids = res.get("retrieved_chunks", []) or []
+    ctx = res.get("retrieved_contexts", []) or []
+
+    if not gold_spans:
         return {"co_gold": False}
 
-    trung = gold & set(topk)
-    recall = len(trung) / len(gold)
-    precision = (len(trung) / len(topk)) if topk else 0.0
+    kq = doi_chieu_gold(gold_spans, gold_texts, ids, ctx, k=k)
+    recall = sum(x.diem for x in kq) / len(kq)
+    khop = [x for x in kq if x.khop]
+    so_lay_ve = max(len(ids), len(ctx))
+    precision = (len(khop) / min(so_lay_ve, k)) if so_lay_ve else 0.0
 
     # Recall ở NHIỀU mức k. Khi đổi `rerank_top_k` của hệ, recall@k mới không so được
-    # với lần chạy trước; giữ thêm recall@12 để đối chiếu đúng cùng cửa sổ. Và nếu
-    # recall@30 tăng mà tỷ lệ đạt không tăng thì nút thắt đã dời sang ngân sách ngữ
-    # cảnh (`synth_context_budget_chars`), không còn ở truy hồi.
-    recall_tai = {kk: len(gold & set(lay[:kk])) / len(gold)
-                  for kk in (5, 12, 30) if kk <= max(len(lay), kk)}
+    # với lần chạy trước; giữ thêm recall@12 để đối chiếu đúng cùng cửa sổ.
+    recall_tai = {}
+    for kk in (5, 12, 30):
+        r_kk = doi_chieu_gold(gold_spans, gold_texts, ids, ctx, k=kk)
+        recall_tai[kk] = sum(x.diem for x in r_kk) / len(r_kk)
+
+    hang_gold = min((x.hang for x in khop if x.hang is not None), default=None)
 
     # Bẫy có xếp TRÊN gold không? -> "retriever nhầm", khác hẳn "retriever sót".
-    hang_gold = next((i for i, c in enumerate(topk) if c in gold), None)
-    hang_bay = next((i for i, c in enumerate(topk) if c in bay), None)
+    # Bẫy đối chiếu bằng CẢ hai đường như gold: id (bộ đề cũ) + text (bộ đề mới).
+    bay_spans = [{"chunk_id": b} for b in (case.get("_distractors") or [])]
+    bay_texts = case.get("_distractor_texts") or []
+    if len(bay_texts) < len(bay_spans):
+        bay_texts = bay_texts + [""] * (len(bay_spans) - len(bay_texts))
+    kq_bay = doi_chieu_gold(bay_spans, bay_texts, ids, ctx, k=k) if bay_spans else []
+    hang_bay = min((x.hang for x in kq_bay if x.khop and x.hang is not None),
+                   default=None)
     bay_tren = (hang_bay is not None
                 and (hang_gold is None or hang_bay < hang_gold))
-    return {"co_gold": True, "recall": recall, "precision": precision,
-            "recall_tai": recall_tai, "so_lay_ve": len(lay),
-            "gold_trong_topk": bool(trung), "hang_gold": hang_gold,
+    return {"co_gold": True, "recall": round(recall, 3),
+            "precision": round(precision, 3),
+            "recall_tai": {kk: round(v, 3) for kk, v in recall_tai.items()},
+            "so_lay_ve": so_lay_ve,
+            "gold_trong_topk": bool(khop), "hang_gold": hang_gold,
             "bay_xep_tren_gold": bay_tren}
 
 
@@ -96,6 +118,10 @@ def main() -> int:
     ap.add_argument("--che-do", dest="che_do", default="cu", choices=("cu", "moi"),
                     help="'cu' = ngữ nghĩa grader gốc legal-rag (so được với baseline "
                          "đã lưu); 'moi' = thêm hỗ trợ hộp đen + Set-F1")
+    ap.add_argument("--adapter", default="legal_rag", choices=("legal_rag", "http"),
+                    help="hệ được đo (B): 'legal_rag' = hộp trắng trên máy này; "
+                         "'http' = hộp đen qua endpoint POST JSON (cần --url)")
+    ap.add_argument("--url", help="endpoint cho --adapter http")
     args = ap.parse_args()
 
     # Grader của FRAMEWORK, không import từ legal-rag nữa: framework phải chạy được
@@ -103,7 +129,8 @@ def main() -> int:
     # grader gốc — đã kiểm 0/375 lệch — để loạt baseline đã commit vẫn so được.
     # Đổi sang "moi" là hành động CÓ Ý THỨC và phải re-baseline.
     from framework.grader import aggregate, grade as _grade, la_loi_quota as _is_quota_error
-    from .ask_full import ask_full
+    from .adapters import tao_adapter
+    he = tao_adapter(args.adapter, args.url)
 
     def grade(res, ex, nhom=None):
         # Set-F1 CHỈ cho G4′ — nhóm duy nhất có đáp án là DANH SÁCH, nơi thừa cũng sai
@@ -129,7 +156,7 @@ def main() -> int:
     for i, c in enumerate(cases, 1):
         at = date.fromisoformat(c["as_of_date"]) if c.get("as_of_date") else None
         try:
-            res = ask_full(c["question"], at)
+            res = he.ask(c["question"], at).thanh_dict()
         except Exception as e:                                  # noqa: BLE001
             if _is_quota_error(e):
                 blocked.append(c["id"])

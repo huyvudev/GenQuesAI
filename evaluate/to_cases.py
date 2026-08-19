@@ -122,7 +122,16 @@ def _case(it: dict) -> dict | None:
         "expect": ex,
         # Phần `legal_rag.grader` không đo — dùng ở score.py
         "_gold_chunks": [s["chunk_id"] for s in it.get("gold_spans", [])],
+        # A2: nguyên liệu đối chiếu theo NỘI DUNG — `reference_contexts` là chuỗi
+        # nguyên văn của từng span, cùng thứ tự với gold_spans. Nhờ nó, hệ không
+        # chung không gian id với legal-rag (hộp đen, chunk khác cách) vẫn đo được
+        # recall. `chunk_id` ở trên chỉ còn là đường nhanh.
+        "_gold_spans": it.get("gold_spans", []),
+        "_gold_texts": it.get("reference_contexts", []),
         "_distractors": it.get("distractor_ids", []),
+        # bộ đề hiện tại chưa lưu text bẫy (sinh trước A2) -> rỗng; lần sinh sau
+        # bộ sinh sẽ điền, và nhãn `retriever_nham` sẽ hoạt động cả với hộp đen.
+        "_distractor_texts": it.get("distractor_texts", []),
         "_reference": it.get("reference", ""),
         "_do_retrieval": it.get("do_retrieval", True),
         "_question_form": it.get("question_form"),
