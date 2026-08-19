@@ -70,6 +70,32 @@ from .gold import chunk_span, gate_c1
 # CÒN sau bản vá này — cần nguồn ứng viên khác (vd cặp văn bản KHÔNG hướng dẫn nhau
 # nhưng cùng chạm một vùng quản lý) hoặc so nội dung bằng embedding ngữ nghĩa thay vì
 # từ vựng. Việc thiết kế lớn hơn, chưa làm ở đây.
+#
+# C5 lượt 3 (2026-08-19, 10 ca G6, dùng vector `dense` đã có sẵn trong Qdrant — KHÔNG
+# tự chạy embedder): ĐÃ THỬ hướng "so nội dung bằng embedding ngữ nghĩa" nêu trên, và
+# nó THÀNH CÔNG ở đúng việc nó làm — nhưng việc đó hoá ra không phải việc cần làm.
+# Cosine similarity giữa vector `dense` của Điều `con` và Điều `me` tách RÕ hai nhóm mà
+# hai độ đo từ vựng trước đó không tách được: "khác chủ đề cụ thể dù trùng tiêu đề"
+# (G6-0001/0009/0010/0011/0014/0018, verdict "sai") nằm ở 0.55–0.77; "cùng chủ đề,
+# `con` chi tiết hoá `me`" (G6-0005/0013, cũng verdict "sai" nhưng vì lý do KHÁC — đúng
+# chủ đề, chỉ không phải xung đột) nằm ở 0.82–0.90 — một khoảng trống rõ ràng ở ~0.8.
+#
+# Nhưng ĐIỀU ĐÓ KHÔNG SỬA ĐƯỢC G6: cả hai nhóm đều verdict "sai" — chặn similarity CAO
+# (đòi "cùng chủ đề cụ thể", đúng nghĩa điều kiện (2)) sẽ LOẠI ĐÚNG nhóm "khác chủ đề",
+# nhưng GIỮ LẠI 100% nhóm "chi tiết hoá" — và nhóm đó vẫn 0% xung đột thật (đã xác nhận
+# CẢ BA lượt: 30/30 ca G6 nguồn GUIDED_BY, 0 xung đột). Similarity đo ĐÚNG "cùng
+# chủ đề" (điều kiện 2) nhưng điều kiện (2) chưa bao giờ là chỗ hỏng chính — cặp
+# GUIDED_BY mà cùng chủ đề cụ thể thì, đúng như bản chất quan hệ, luôn RA hài hoà chứ
+# không mâu thuẫn (điều kiện 3). Lọc bằng similarity trên nguồn ứng viên này chỉ đổi
+# TỶ LỆ RÁC người duyệt phải đọc (bớt nửa "khác chủ đề" hiển nhiên), KHÔNG tăng số
+# xung đột thật tìm được — không đáng đánh đổi thêm một lần gọi Qdrant mỗi cặp ứng
+# viên. KHÔNG áp dụng ngưỡng này vào `ung_vien()`.
+#
+# Kết luận cho người sau: hướng "so nội dung bằng embedding" đã coi là xong — nó hoạt
+# động, và nó xác nhận thêm bằng số rằng nguồn ứng viên (GUIDED_BY) mới là chỗ hỏng,
+# không phải công cụ so khớp. Việc còn lại CHỈ có thể là đổi nguồn ứng viên sang cặp
+# văn bản KHÔNG hướng dẫn nhau (vd cùng cấp bậc, không có cạnh GUIDED_BY, nhưng cùng
+# đụng một `chu_de` cụ thể) — thiết kế lại `ung_vien()` từ đầu, chưa làm ở đây.
 _TIEU_DE_THU_TUC = (
     "hiệu lực thi hành", "trách nhiệm thi hành", "tổ chức thực hiện",
     "điều khoản thi hành", "điều khoản chung",
