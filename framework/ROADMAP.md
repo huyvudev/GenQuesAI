@@ -150,10 +150,18 @@ ngoài dự án) đã tìm và vá được G1/G3/G5/G6 trong `generator/`; ceil
 từ `generator/` — cần báo phía Chatbot-Law: (1) một số quan hệ SUA_DOI/THAY_THE/BAI_BO
 không có trong đồ thị dù có trên vbpl.vn (G4-0025, G4-0039, G6-0012 kiểu); (2)
 `Expression.hieu_luc_den` không cập nhật kịp các đợt bãi bỏ MỘT PHẦN (còn ~20% ca G3).
+Bằng chứng cụ thể cho cả hai, sẵn sàng gửi phía Chatbot-Law:
+`out/bao-cao-khoang-trong-du-lieu.md` (không commit — sinh cục bộ như `review_c5.html`).
+
 G6 còn một vấn đề thiết kế chưa giải: quan hệ hướng dẫn (`con` GUIDED_BY `me`) khiến
 `con` luôn elaborate `me` một cách nhất quán — lọc tiêu đề Điều không đủ để tách xung
-đột thật khỏi quan hệ hướng dẫn bình thường; cần đổi nguồn ứng viên hoặc so nội dung
-bằng ngữ nghĩa. Chi tiết từng lượt: `c5-review-{1,2,3}-ket-qua` trong memory dự án.
+đột thật khỏi quan hệ hướng dẫn bình thường. Đã thử CẢ hai công cụ so khớp nội dung —
+từ vựng (Jaccard, `doi_chieu.do_phu`) và embedding ngữ nghĩa (cosine trên vector
+`dense` có sẵn trong Qdrant) — cả hai đều KHÔNG sửa được (xem comment trong
+`g6_conflict.py` và memory `g6-embedding-da-thu`): 30/30 ca G6 nguồn GUIDED_BY qua 3
+lượt C5, 0 xung đột thật. Việc còn lại chỉ có thể là đổi NGUỒN ứng viên (cặp văn bản
+KHÔNG có cạnh GUIDED_BY) — thiết kế lại `ung_vien()` từ đầu, chưa làm. Chi tiết từng
+lượt: `c5-review-{1,2,3}-ket-qua` trong memory dự án.
 
 Phiếu review C5 mới nhất (`out/review_c5.html`, snapshot `2026-08-19T06:45:52Z`) đã bàn
 giao cho người ngoài dự án — D2 coi là xong khi có `out/c5_ket_qua.csv` từ lượt đó.
