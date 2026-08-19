@@ -95,18 +95,20 @@ legal_rag|http [--url ...]`).
 
 ---
 
-## C — Đóng gói  ✅ **PHẦN LỚN XONG** (2026-08-19)
+## C — Đóng gói  ✅ **XONG** (2026-08-19)
 
 `pyproject.toml` với `[project.scripts] genquesai` ✅ · CLI hợp nhất `genquesai
 corpus/gen/run/report` (router mỏng trên `genquesai/cli.py`, giao thẳng argv cho
 `framework.cli`/`generator.run_all`/`evaluate.score`, không khai lại cờ) ✅ · README gốc
-cho người ngoài ✅ · cấu hình bằng file thay cho biến môi trường — **CHƯA làm**, để lại
-làm riêng vì rủi ro hơn phần còn lại (đổi cách `generator/common.py::nap_env()` đọc cấu
-hình, chạm nhiều nơi hơn một router).
+cho người ngoài ✅ · cấu hình bằng file thay cho biến môi trường ✅ — `framework/config.py`
+đọc `genquesai.toml` (mẫu `genquesai.example.toml`, file thật không commit), biến môi
+trường `LEGAL_RAG_ROOT` vẫn ghi đè được (ưu tiên cao nhất, cho CI/thử nghiệm nhanh)
+nhưng không còn là cách CHÍNH để cấu hình.
 
-Đúng như dự đoán: không có rủi ro kỹ thuật ở phần đã làm. `pytest` xanh xuyên suốt,
-kiểm cả hai đường gọi (`python -m genquesai.cli` và lệnh `genquesai` cài qua
-`pip install -e .`) cho kết quả giống hệt.
+Đúng như dự đoán: không có rủi ro kỹ thuật. `pytest` xanh xuyên suốt (220 passed, 2
+skipped); kiểm cả hai đường gọi CLI (`python -m genquesai.cli` và lệnh `genquesai` cài
+qua `pip install -e .`) lẫn 3 tầng ưu tiên cấu hình (mặc định / file / biến môi
+trường, `tests/test_config.py`) cho kết quả đúng như thiết kế.
 
 ---
 
@@ -132,12 +134,10 @@ sai đối tượng. Báo cáo hai con số tách rời: *độ phủ* (kho rộ
 
 ```
 A3 ──► A2 ──► A1 ──► B ──► C ──► D
- ✅      ✅      ✅     ✅    ✅*     ○
+ ✅      ✅      ✅     ✅    ✅      ○
                                  ▲
 C5 (cần người, chạy song song) ──┘
    ba lượt AI duyệt xong, lượt kế chờ người ngoài dự án
-
-* C còn sub-goal "cấu hình bằng file" chưa làm, nhưng không chặn D.
 ```
 
 **C5 chặn D và nên bắt đầu ngay.** Không phải vì thủ tục: nếu C5 cho thấy một nhóm dưới
