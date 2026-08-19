@@ -104,8 +104,12 @@ def ung_vien(c, pool: int, cap: int) -> list[dict]:
                 continue
             # (1) một bên đã sửa đổi/thay thế/bãi bỏ bên kia -> không còn là hai
             # quy định SONG SONG cùng hiệu lực, loại ngay, không đợi người duyệt.
-            if (me.norm_id in tv.tac_dong_toi(c, con.norm_id)
-                    or con.norm_id in tv.tac_dong_toi(c, me.norm_id)):
+            # nguon="ca_hai": mặc định "tu_dong" của tac_dong_toi() bỏ sót quan hệ chỉ
+            # có ở cạnh trực tiếp (C5 lượt 3, G6-0012 — dù ca đó cuối cùng vẫn không có
+            # trong đồ thị ở CẢ HAI nguồn, xác nhận qua Neo4j: khoảng trống dữ liệu,
+            # không phải bỏ sót tham số — nhưng đồng bộ nguon vẫn đúng cho các ca khác).
+            if (me.norm_id in tv.tac_dong_toi(c, con.norm_id, nguon="ca_hai")
+                    or con.norm_id in tv.tac_dong_toi(c, me.norm_id, nguon="ca_hai")):
                 continue
             cap_ds.append((con, me))
     cap_ds.sort(key=lambda x: (x[0].norm_id, x[1].norm_id))
