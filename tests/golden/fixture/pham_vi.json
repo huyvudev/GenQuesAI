@@ -1,49 +1,51 @@
 {
  "day_du": false,
  "phu_dinh": {
-  "784/2025/TT-BYT": true,
-  "836/2025/TT-BTC": true,
-  "869/2026/NĐ-CP": true,
-  "987/2025/TT-NHNN": true,
-  "788/2025/TT-BKHCN": true,
-  "936/2025/TT-BYT": true
+  "987/2025/QĐ-TTg": true,
+  "936/2025/TT-BXD": true,
+  "788/2025/TT-BDTTG": true,
+  "784/2025/TT-BNNMT": true,
+  "836/2025/QH15": true,
+  "869/2026/NĐ-CP": true
  },
  "nguon_khong_co": {
   "norm": [],
   "expr": [],
   "so_hieu": [
-   "784/2025/TT-BYT",
-   "788/2025/TT-BKHCN",
-   "836/2025/TT-BTC",
+   "144/2025/TT-BTCC",
+   "784/2025/TT-BNNMT",
+   "788/2025/TT-BDTTG",
+   "836/2025/QH15",
    "869/2026/NĐ-CP",
-   "936/2025/TT-BYT",
-   "987/2025/TT-NHNN"
+   "936/2025/TT-BXD",
+   "987/2025/QĐ-TTg"
   ]
  },
  "thong_ke": {
-  "norm": 2205,
-  "norm_hat": 609,
-  "component": 31587,
-  "expression": 31587,
-  "quan_he": 4907,
+  "norm": 2142,
+  "norm_hat": 619,
+  "component": 29976,
+  "expression": 29976,
+  "quan_he": 4855,
   "chuyen_tiep": 103,
   "so_hieu_khong_tim_thay": [
-   "784/2025/TT-BYT",
-   "788/2025/TT-BKHCN",
-   "836/2025/TT-BTC",
+   "144/2025/TT-BTCC",
+   "784/2025/TT-BNNMT",
+   "788/2025/TT-BDTTG",
+   "836/2025/QH15",
    "869/2026/NĐ-CP",
-   "936/2025/TT-BYT",
-   "987/2025/TT-NHNN"
+   "936/2025/TT-BXD",
+   "987/2025/QĐ-TTg"
   ],
   "nguon_khong_co_norm": 0,
   "nguon_khong_co_expr": 0,
   "phu_dinh_da_chot": {
-   "784/2025/TT-BYT": true,
-   "836/2025/TT-BTC": true,
-   "869/2026/NĐ-CP": true,
-   "987/2025/TT-NHNN": true,
-   "788/2025/TT-BKHCN": true,
-   "936/2025/TT-BYT": true
+   "987/2025/QĐ-TTg": true,
+   "936/2025/TT-BXD": true,
+   "788/2025/TT-BDTTG": true,
+   "784/2025/TT-BNNMT": true,
+   "836/2025/QH15": true,
+   "869/2026/NĐ-CP": true
   }
  }
 }
