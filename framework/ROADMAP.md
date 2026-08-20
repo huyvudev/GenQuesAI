@@ -137,7 +137,7 @@ A3 ──► A2 ──► A1 ──► B ──► C ──► D
  ✅      ✅      ✅     ✅    ✅      ○
                                  ▲
 C5 (cần người, chạy song song) ──┘
-   ba lượt AI duyệt xong, lượt kế chờ người ngoài dự án
+   ba lượt AI duyệt + 1 lượt đối chiếu luatvietnam/vbpl.vn xong, lượt kế chờ người ngoài dự án
 ```
 
 **C5 chặn D và nên bắt đầu ngay.** Không phải vì thủ tục: nếu C5 cho thấy một nhóm dưới
@@ -152,6 +152,30 @@ không có trong đồ thị dù có trên vbpl.vn (G4-0025, G4-0039, G6-0012 ki
 `Expression.hieu_luc_den` không cập nhật kịp các đợt bãi bỏ MỘT PHẦN (còn ~20% ca G3).
 Bằng chứng cụ thể cho cả hai, sẵn sàng gửi phía Chatbot-Law:
 `out/bao-cao-khoang-trong-du-lieu.md` (không commit — sinh cục bộ như `review_c5.html`).
+
+**Lượt đối chiếu bổ sung (2026-08-19, AI-hỗ-trợ, vẫn KHÔNG tính vào D2):** thử dùng chat
+luatvietnam (`luatvietnammisa.aicongvu.gov.vn`) làm nguồn đối chiếu độc lập cho 80 câu của
+phiếu review C5 mới nhất — dán câu hỏi + đáp án bộ đề, hỏi "có đúng không". Kết quả thô: 33
+khớp · 35 không khớp · 12 không rõ. Điều tra sâu 25/35 ca "không khớp" bằng cách đọc trực
+tiếp vbpl.vn (và một lần đào tới tận Cypher trên Neo4j cho ca nghi ngờ nhất) — loại 10 ca
+G6 khỏi diện điều tra vì lý do riêng (đáp án G6 là chuỗi sentinel kỹ thuật
+`neu_ca_hai_hoac_tu_choi`, không phải câu trả lời thật, dán thẳng vào luatvietnam kiểu gì
+cũng bị báo sai).
+
+Kết quả 25 ca: **23/25 bộ đề ĐÚNG, luatvietnam sai/hallucinate** (bịa số hiệu văn bản không
+tồn tại, áp nhầm nguyên tắc pháp lý chung, nhầm luật chủ đề gần nhau, tự mâu thuẫn); 1/25
+(G4-0025) là thiếu sót đã biết từ trước (không mới); 1/25 (G3-0020) là nhiễu dữ liệu ở
+CHÍNH NGUỒN vbpl.vn (tự nhầm số hiệu văn bản tương tự — `43/2008/QĐ-BTC` với
+`43/2009/TT-BTC`), đồ thị Neo4j chỉ kế thừa trung thực, không phải lỗi `generator/`.
+
+**Kết luận: 0 lỗi `generator/` mới cần sửa từ đợt này.** Bài học giữ lại: (1) luatvietnam
+KHÔNG đáng tin làm ground truth độc lập cho loại câu tra cứu quan hệ văn bản/trích dẫn
+chính xác — chỉ dùng làm tín hiệu sàng lọc thô, luôn xác minh lại bằng vbpl.vn trước khi
+kết luận lỗi thật; (2) khi nghi lỗi trích xuất, đào tới tận cạnh đồ thị bằng `cypher-shell`
+(Neo4j chạy sẵn qua `docker compose`, xem memory `chay-eval-moi-truong`) trước khi kết luận
+cần sửa code — "đồ thị nói gì" và "`generator/` trích đúng đồ thị không" là hai câu hỏi
+khác nhau. Chi tiết đầy đủ: `out/g4_dieu_tra_khong.md`, `out/g1235_7_dieu_tra_khong.md`,
+memory dự án `c5-luatvietnam-doi-chieu`.
 
 G6 còn một vấn đề thiết kế chưa giải: quan hệ hướng dẫn (`con` GUIDED_BY `me`) khiến
 `con` luôn elaborate `me` một cách nhất quán — lọc tiêu đề Điều không đủ để tách xung
