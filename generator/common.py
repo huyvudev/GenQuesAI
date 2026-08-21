@@ -31,22 +31,32 @@ def setup_stdout() -> None:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     _stdout_da_boc = True
 
-# Code của hệ RAG nằm ở repo khác; nạp bằng đường dẫn thay vì cài đặt.
+# Hệ RAG ĐANG ĐƯỢC ĐO (system under test) nằm ở repo khác; nạp bằng đường dẫn thay vì
+# cài đặt. Chỉ dùng cho đường ĐO (evaluate/ask_full.py --adapter legal_rag, generator/
+# paraphrase.py cũ) — import package `legal_rag` TRẦN qua sys.path.
 # Nguồn giá trị: framework/config.py (ROADMAP C — cấu hình bằng file, biến môi
 # trường LEGAL_RAG_ROOT vẫn ghi đè được cho CI/thử nghiệm nhanh).
+#
+# KHÔNG dùng đường này để đọc corpus/CDI của chính GenQuesAI — cho việc đó dùng
+# `genquesai.legal_rag` (bản clone cục bộ, xem genquesai/legal_rag/__init__.py). Hai
+# package cùng tên `legal_rag` trần (bản của hệ được đo, và nếu lỡ trỏ legal_rag_root
+# vào chính clone này) sẽ đè lẫn nhau theo sys.path — cố tình tách tên để tránh.
 LEGAL_RAG_ROOT = legal_rag_root()
 if str(LEGAL_RAG_ROOT) not in sys.path:
     sys.path.insert(0, str(LEGAL_RAG_ROOT))
 
 
 def nap_env() -> None:
-    """Đổ `.env` của legal-rag vào os.environ.
+    """Đổ `.env` của legal-rag (hệ được đo) vào os.environ.
 
     `Settings` bên đó đọc `.env` TƯƠNG ĐỐI theo cwd. Chạy từ repo này thì cwd khác nên
     nó im lặng dùng giá trị mặc định — Neo4j sai mật khẩu, LLM thiếu api_key. Truyền
     `_env_file` chỉ chữa được chỗ nào ta tự khởi tạo Settings; những chỗ dùng
     `get_settings()` bên trong (agent/graph, embedder, reranker…) thì không với tới.
     Đổ vào môi trường là cách duy nhất phủ hết. KHÔNG ghi đè biến đã có sẵn.
+
+    Chỉ phục vụ đường ĐO hệ ngoài (--adapter legal_rag). Đọc corpus/CDI cục bộ của
+    GenQuesAI dùng `.env` riêng ở `genquesai/legal_rag/.env` (xem `_settings()`).
     """
     f = LEGAL_RAG_ROOT / ".env"
     if not f.exists():
@@ -192,20 +202,24 @@ def content_hash(text: str) -> str:
 
 
 # ── kết nối ─────────────────────────────────────────────────────────────────
-# Settings của legal-rag đọc `.env` tương đối theo cwd. Chạy từ repo này thì cwd
-# khác -> phải trỏ thẳng vào file, nếu không nó im lặng dùng mật khẩu mặc định.
+# Đọc corpus/CDI CỤC BỘ của GenQuesAI — dùng bản clone `genquesai.legal_rag`, KHÔNG
+# phải package `legal_rag` trần (đó là hệ được đo, xem LEGAL_RAG_ROOT ở trên). `.env`
+# riêng ở genquesai/legal_rag/.env — độc lập với `.env` của repo Chatbot-Law.
+_GENQUESAI_LEGAL_RAG_ENV = Path(__file__).resolve().parent.parent / "genquesai" / "legal_rag" / ".env"
+
+
 def _settings():
-    from legal_rag.config import Settings
-    return Settings(_env_file=str(LEGAL_RAG_ROOT / ".env"))
+    from genquesai.legal_rag.config import Settings
+    return Settings(_env_file=str(_GENQUESAI_LEGAL_RAG_ENV))
 
 
 def open_neo4j():
-    from legal_rag.graph.client import Neo4jClient
+    from genquesai.legal_rag.graph.client import Neo4jClient
     return Neo4jClient(settings=_settings())
 
 
 def open_qdrant():
-    from legal_rag.retrieval.qdrant_store import QdrantStore
+    from genquesai.legal_rag.retrieval.qdrant_store import QdrantStore
     try:
         return QdrantStore(settings=_settings())
     except TypeError:

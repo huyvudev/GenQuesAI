@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import re
 
-from .common import LEGAL_RAG_ROOT  # noqa: F401  (đảm bảo sys.path đã có legal_rag)
 
 SYSTEM = """Bạn viết lại câu hỏi pháp lý cho tự nhiên như người dân thật hỏi.
 
@@ -75,7 +74,7 @@ def gate_c2(goc: str, moi: str) -> tuple[bool, str]:
 
 
 def make_llm():
-    from legal_rag.agent.llm import LLM
+    from genquesai.legal_rag.agent.llm import LLM
     from .common import _settings
     return LLM(settings=_settings())
 
