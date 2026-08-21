@@ -18,10 +18,11 @@ from __future__ import annotations
 
 from datetime import date
 
-from generator.common import point_id
+from generator.common import point_id, nap_env
 
 
 def ask_full(question: str, as_of_date: date | None = None) -> dict:
+    nap_env()  # nạp .env CỦA HỆ ĐƯỢC ĐO vào os.environ — chỉ cần ngay trước dòng dưới
     from legal_rag.agent.graph import get_graph
     from legal_rag.agent.nodes import filter_used_citations
 

@@ -38,3 +38,8 @@ tests/golden/fixture/*
 
 # cấu hình riêng từng máy (ROADMAP C) — mẫu ở genquesai.example.toml
 /genquesai.toml
+
+# .env của genquesai/legal_rag/ (mật khẩu Neo4j/Qdrant/LLM riêng từng máy) — mẫu ở
+# genquesai/legal_rag/.env.example
+/genquesai/legal_rag/.env
+/genquesai/legal_rag/.env.*.bak

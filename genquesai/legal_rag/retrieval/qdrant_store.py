@@ -16,7 +16,8 @@ class QdrantStore:
         self._s = settings or get_settings()
         # check_compatibility=False: bỏ qua chênh lệch minor client/server (an toàn cho thao tác cơ bản)
         self.client = QdrantClient(url=self._s.qdrant_url, check_compatibility=False,
-                                   timeout=self._s.qdrant_timeout)
+                                   timeout=self._s.qdrant_timeout,
+                                   api_key=self._s.qdrant_api_key or None)
         self.collection = self._s.qdrant_collection
 
     def exists(self) -> bool:

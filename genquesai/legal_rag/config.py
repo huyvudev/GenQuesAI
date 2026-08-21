@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     # 'localhost' phân giải ::1 (IPv6) trước, tunnel chỉ bind IPv4 -> chờ timeout ~2s/request
     qdrant_collection: str = "legal_text_units"
     qdrant_timeout: int = 60          # timeout (giây) cho request Qdrant — tránh 'timed out' khi máy tải nặng
+    qdrant_api_key: str = ""          # bắt buộc khi Qdrant mở ra internet (server online) — rỗng = local không auth
 
     # Embedding (bge-m3): dense 1024 + sparse
     embed_model: str = "BAAI/bge-m3"

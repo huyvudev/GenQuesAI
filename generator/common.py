@@ -55,8 +55,16 @@ def nap_env() -> None:
     `get_settings()` bên trong (agent/graph, embedder, reranker…) thì không với tới.
     Đổ vào môi trường là cách duy nhất phủ hết. KHÔNG ghi đè biến đã có sẵn.
 
-    Chỉ phục vụ đường ĐO hệ ngoài (--adapter legal_rag). Đọc corpus/CDI cục bộ của
-    GenQuesAI dùng `.env` riêng ở `genquesai/legal_rag/.env` (xem `_settings()`).
+    Chỉ phục vụ đường ĐO hệ ngoài (--adapter legal_rag) — gọi lười ngay trước khi
+    import `legal_rag.agent.*` thật (xem evaluate/ask_full.py::ask_full), KHÔNG gọi
+    lúc nạp module này. Đọc corpus/CDI cục bộ của GenQuesAI dùng `.env` riêng ở
+    `genquesai/legal_rag/.env` (xem `_settings()`) — không đụng hàm này.
+
+    Từng gọi vô điều kiện ở cuối module (mọi nơi import `generator.common` đều dính).
+    Hệ quả: `os.environ` bị nạp từ `.env` CỦA CHATBOT-LAW, và pydantic-settings ưu
+    tiên os.environ hơn `_env_file` — nên `genquesai.legal_rag.config.Settings` dù đã
+    trỏ `.env` riêng vẫn bị `.env` bên Chatbot-Law ghi đè ÂM THẦM (chỉ "trông" độc lập
+    khi hai file tình cờ giống nhau). Đã đo bằng thực nghiệm 2026-08-21.
     """
     f = LEGAL_RAG_ROOT / ".env"
     if not f.exists():
@@ -67,9 +75,6 @@ def nap_env() -> None:
             continue
         k, v = dong.split("=", 1)
         os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
-
-
-nap_env()
 
 # ── point_id ────────────────────────────────────────────────────────────────
 # Chép nguyên văn từ legal_rag/retrieval/index.py:16,38-42. KHÔNG import trực tiếp
