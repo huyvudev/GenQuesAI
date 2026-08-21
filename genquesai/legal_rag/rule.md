@@ -6,6 +6,45 @@
 > `backbone.md §23`, 2026-08-01/03) — không phải suy đoán, là bản ghi lại cơ chế đã
 > validate (LLM thắng regex 6/6 test case; audit toàn corpus sau khi áp dụng).
 
+## 0. Trả lời trực tiếp — 2 câu hỏi gốc
+
+> Câu hỏi gốc: *"nếu thay thế sửa đổi... thì bắt quan hệ như nào ví dụ như văn bản
+> mới ghi thay thế sửa đổi văn bản cũ, còn quan hệ của luật, nghị định và thông tư
+> thì bắt quan hệ như nào?"*
+
+**Câu 1 — "Văn bản mới ghi thay thế/sửa đổi văn bản cũ" → bắt bằng gì?**
+
+Đọc **TIÊU ĐỀ** của văn bản mới — vì luật VN luôn tự ghi kiểu *"Thông tư sửa đổi, bổ
+sung một số điều của Thông tư số 12/2016/TT-BTTTT"* hoặc *"Quyết định bãi bỏ Chỉ thị
+số 05/2010/CT-BGDĐT"*. Cơ chế: **neo theo ĐỘNG TỪ** trong tiêu đề, không neo theo
+"có số hiệu xuất hiện ở đâu đó trong toàn văn":
+- Có động từ **sửa đổi/bổ sung/điều chỉnh/thay thế/đình chỉ thi hành** → `AMENDS`.
+- Có động từ **bãi bỏ/hủy bỏ** (không có nhóm trên) → `REPLACES`.
+- Rồi trích MỌI số hiệu xuất hiện trong chính câu/tiêu đề đó (không phải toàn văn)
+  làm đích của cạnh.
+
+Nếu có sẵn metadata `referenceType` từ nguồn (vbpl.vn) thì dùng thẳng, không cần regex.
+Với văn bản khó (OCR lỗi số hiệu, câu phức tạp lẫn nhiều động từ) thì cho LLM đọc lại
+tiêu đề + đoạn đầu để phân loại chính xác hơn và vá số hiệu hỏng.
+
+**Câu 2 — "Quan hệ Luật/Nghị định/Thông tư" → bắt bằng gì?**
+
+Đọc đoạn **"Căn cứ..."** ở ĐẦU mỗi văn bản (trước "Điều 1") — không phải tiêu đề.
+Luật VN bắt buộc liệt kê *"Căn cứ Luật Ban hành văn bản quy phạm pháp luật; Căn cứ
+Nghị định số X;..."* ngay từ đầu. Mọi số hiệu xuất hiện trong đoạn đó → `GUIDED_BY`,
+chiều cạnh là **con → cha** (Thông tư → Nghị định → Luật, tức văn bản chi tiết hơn
+trỏ lên văn bản gốc mà nó dựa vào). Vì đây chỉ mô tả cấu trúc phân cấp (không làm
+đổi hiệu lực của ai) nên **tự động duyệt**, không cần người rà — khác hẳn
+`AMENDS`/`REPLACES` (luôn phải qua người duyệt vì có thể tự động đóng hiệu lực văn
+bản cũ).
+
+**Vì sao phải TÁCH RIÊNG 2 chỗ đọc (tiêu đề vs. đoạn căn cứ)?** Đây là bẫy quan
+trọng nhất: nếu quét chung cả toàn văn để tìm "có động từ sửa/thay + có số hiệu ở
+gần đó", hệ thống sẽ **nhầm câu "Căn cứ Nghị định X..." (chỉ là trích dẫn nguồn gốc,
+không phải hành vi sửa đổi) thành `AMENDS`** — vì đoạn căn cứ cũng chứa số hiệu, và
+có thể đứng gần một câu khác trong văn bản có nhắc "sửa đổi". Quy tắc bắt buộc: chỉ
+đọc TIÊU ĐỀ cho REPLACES/AMENDS, chỉ đọc ĐOẠN CĂN CỨ cho GUIDED_BY — không trộn lẫn.
+
 ## 1. Ba loại cạnh, ba mức rủi ro
 
 | Cạnh | Ý nghĩa | Chiều | Ảnh hưởng hiệu lực? | Duyệt tự động? |
