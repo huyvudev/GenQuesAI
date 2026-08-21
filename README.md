@@ -76,6 +76,7 @@ pip install -e ".[cdi]"                          # + ".[cdi-embed]" nếu cần 
 cd genquesai/legal_rag
 cp .env.example .env                             # rồi điền NEO4J_PASSWORD/QDRANT_API_KEY
 python -m genquesai.legal_rag cdi status          # tổng quan: hiệu lực + published + ledger + đối soát
+python -m genquesai.legal_rag refs --llm          # dò quan hệ REPLACES/AMENDS/GUIDED_BY (quy tắc: xem rule.md)
 ```
 
 `.env` không commit (gitignored) — mẫu ở `genquesai/legal_rag/.env.example`.

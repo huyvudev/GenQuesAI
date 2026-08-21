@@ -1,8 +1,8 @@
-"""CLI legal_rag (bản clone CDI trong GenQuesAI): python -m legal_rag {init-db|health|ingest|embed|pit|cdi}
+"""CLI legal_rag (bản clone CDI trong GenQuesAI): python -m legal_rag {init-db|health|ingest|embed|pit|refs|cdi}
 
 Rút gọn từ Chatbot-Law/chatbot/legal_rag/cli.py — chỉ giữ các lệnh mà module đã clone
 hỗ trợ (không có review/approve, ocr — thuộc §10 AV, không được mang theo). Xem
-legal_rag/__init__.py để biết phạm vi clone.
+legal_rag/__init__.py để biết phạm vi clone. Quy tắc dò quan hệ (`refs`): xem `rule.md`.
 """
 from __future__ import annotations
 import argparse
@@ -128,6 +128,27 @@ def cmd_embed(args) -> int:
     store.close()
     dt = time.time() - t0
     print(f"✓ embed xong: {n} point trong {dt:.0f}s ({n/max(dt,1):.1f}/s)")
+    return 0
+
+
+def cmd_refs(args) -> int:
+    """Dò quan hệ REPLACES/AMENDS/GUIDED_BY (regex + LLM tuỳ chọn) — rule.md."""
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    from .ingestion.reference_extractor import extract_corpus_references
+    s = get_settings()
+    base = Path(args.corpus or s.corpus_dir)
+    srcs = args.src or ["*"]
+    llm = None
+    if args.llm:
+        from .agent.llm import LLM
+        llm = LLM(settings=s)
+    with Neo4jClient(s) as c:
+        c.verify()
+        res = extract_corpus_references(c, base, srcs, llm=llm, resume=not args.no_resume,
+                                        pace_seconds=args.pace)
+    print(f"✓ refs xong: {res['norm']} VB có cạnh mới · "
+          f"{res['REPLACES']}R/{res['AMENDS']}A/{res['GUIDED_BY']}G"
+          + (" [LLM]" if llm else " [chỉ regex]"))
     return 0
 
 
@@ -292,6 +313,16 @@ def main(argv=None) -> int:
     pe.add_argument("--recreate", action="store_true", help="xóa & tạo lại collection")
     pe.add_argument("--resume", action="store_true", help="bỏ qua Điều đã embed (resumable)")
     pe.set_defaults(func=cmd_embed)
+
+    pr = sub.add_parser("refs", help="dò quan hệ REPLACES/AMENDS/GUIDED_BY (regex + LLM tuỳ chọn, xem rule.md)")
+    pr.add_argument("--corpus", default=None, help="thư mục gốc (mặc định CORPUS_DIR)")
+    pr.add_argument("--src", nargs="+", default=None, help="corpus con (mặc định tất cả)")
+    pr.add_argument("--llm", action="store_true",
+                    help="bật LLM cho VB có từ khoá sửa/thay/bãi bỏ ở tiêu đề (vá OCR + phân loại đúng hơn)")
+    pr.add_argument("--no-resume", action="store_true", dest="no_resume",
+                    help="xử lý lại cả VB đã có flag refs_done/refs_llm_done (mặc định bỏ qua)")
+    pr.add_argument("--pace", type=float, default=0.0, help="giây nghỉ giữa các lượt LLM (tránh rate-limit)")
+    pr.set_defaults(func=cmd_refs)
 
     # CDI — Continuous Document Integration (backbone.md §9)
     pcdi = sub.add_parser("cdi", help="tích hợp văn bản liên tục (status/runs/resync/undo/verify/watch)")

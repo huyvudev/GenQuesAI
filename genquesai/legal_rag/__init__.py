@@ -6,8 +6,12 @@ Clone ngày 2026-08-21. Mang theo: domain, ingestion/{loader,structural_parser,i
 reconcile,text_unit}, graph, retrieval, cdi, agent/llm.py (LLM generic dùng cho
 paraphrase). KHÔNG mang theo agent/graph.py (LangGraph — logic TRẢ LỜI câu hỏi), api/,
 webapp/, evaluation/, hay các module chỉ phục vụ AV (§10 — versioning sửa đổi cấp
-Điều: amendment_*, transition_extractor, reference_extractor, ocr, versioning,
-internal_ref_extractor).
+Điều: amendment_*, transition_extractor, ocr, versioning, internal_ref_extractor).
+
+`ingestion/reference_extractor.py` (thêm 2026-08-21, sau clone ban đầu): KHÔNG phải
+copy nguyên — viết lại theo `rule.md`, đã sửa sẵn bug đã biết ở bản gốc (regex thô
+nhầm "Căn cứ NĐ-CP..." thành AMENDS). Dò REPLACES/AMENDS/GUIDED_BY bằng regex + LLM
+tuỳ chọn (`legal_rag refs --llm`).
 
 CỐ Ý đặt tên `genquesai.legal_rag` (namespace dưới `genquesai`), KHÔNG phải `legal_rag`
 trần: hệ RAG đang được ĐO (system under test, trỏ qua `legal_rag_root`/`LEGAL_RAG_ROOT`
