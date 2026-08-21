@@ -45,28 +45,104 @@ không phải hành vi sửa đổi) thành `AMENDS`** — vì đoạn căn cứ
 có thể đứng gần một câu khác trong văn bản có nhắc "sửa đổi". Quy tắc bắt buộc: chỉ
 đọc TIÊU ĐỀ cho REPLACES/AMENDS, chỉ đọc ĐOẠN CĂN CỨ cho GUIDED_BY — không trộn lẫn.
 
-## 1. Ba loại cạnh, ba mức rủi ro
+## 0.1 Cập nhật luồng (v3) — ĐỒNG THUẬN ĐA NGUỒN, không phải chuỗi verify 1 chiều
 
-| Cạnh | Ý nghĩa | Chiều | Ảnh hưởng hiệu lực? | Duyệt tự động? |
-|---|---|---|---|---|
-| `REPLACES` | src (VB mới) thay thế tgt (VB cũ) | mới → cũ | **CÓ** — approve xong tự đóng hiệu lực VB cũ (domino) | KHÔNG — luôn `da_duyet=false` |
-| `AMENDS` | src sửa đổi/bổ sung tgt | mới → cũ | Không đóng hẳn hiệu lực, chỉ đánh dấu đã sửa | KHÔNG — luôn `da_duyet=false` |
-| `GUIDED_BY` | src căn cứ vào / cụ thể hoá tgt | con → cha (Thông tư→Nghị định→Luật) | KHÔNG | CÓ — regex tự `da_duyet=true` (rủi ro thấp) |
+> Lịch sử: v1 (mục 2/5 gốc) — LLM chỉ chạy cho ~13% VB, không đối chiếu gì. v2 (bản
+> nháp giữa chừng, xem lịch sử git) — coi LLM là lớp "xác minh phụ" chạy SAU nguồn
+> chính (metadata/regex), chỉ đổi kết quả khi lệch. **v3 (chốt theo làm rõ của
+> người dùng 2026-08-21) — ĐỒNG THUẬN ĐA NGUỒN:** mọi nguồn khả dụng (metadata nếu
+> có + regex nếu match + LLM LUÔN chạy) đứng NGANG HÀNG, so khớp lẫn nhau; duyệt tự
+> động CHỈ khi TẤT CẢ nguồn khả dụng đồng ý — không có nguồn nào "chính" áp đặt lên
+> nguồn khác nữa (khác hẳn v2).
 
-**Nguyên tắc bất biến:** cạnh nào có thể làm sai lệch trạng thái hiệu lực
-(REPLACES/AMENDS) thì KHÔNG BAO GIỜ tự tin 100%, bất kể nguồn trích (kể cả LLM) —
-luôn vào hàng đợi người duyệt trước khi được dùng để đóng hiệu lực.
+```
+Với mỗi VB:
+  metadata = referenceType trong doc.json (rỗng nếu không có)
+  regex    = quy tắc mục 3 (REPLACES/AMENDS, tiêu đề) + mục 4 (GUIDED_BY, đoạn căn cứ)
+  llm      = LUÔN LUÔN chạy (mục 5) — không còn là lớp tuỳ chọn
 
-## 2. Thứ tự ưu tiên nguồn (cao → thấp)
+  CÓ metadata (dù regex có match hay không):
+    So 3 nguồn: metadata vs regex (nếu có) vs llm
+    → CẢ 3 (hoặc metadata+llm nếu regex rỗng) cho CÙNG kết quả → da_duyet=TRUE (tự động duyệt)
+    → có BẤT KỲ nguồn nào lệch → da_duyet=FALSE + cờ mismatch → đưa NGƯỜI DÙNG rà soát
 
-1. **`referenceType` có sẵn trong `doc.json`** (vbpl.vn tự gắn nhãn) — không cần regex/LLM, map thẳng:
-   `12→REPLACES · 10→AMENDS · 1,3→GUIDED_BY`. Dùng khi có (VB crawl từ vbpl.vn).
-2. **Regex trên TIÊU ĐỀ** (VB không có `referenceType` — nạp tay, crawl nguồn khác) — cho REPLACES/AMENDS.
-3. **Regex trên đoạn "Căn cứ..."** (preamble, trước "Điều 1") — cho GUIDED_BY.
-4. **LLM** — chỉ chạy cho tập con khó (VB có từ khoá sửa/thay/bãi bỏ ở tiêu đề mà regex
-   không chắc, hoặc số hiệu bị lỗi OCR). LLM không thay thế lớp 2/3, mà HỢP NHẤT: giữ
-   GUIDED_BY từ regex (recall cao, rủi ro thấp), bỏ AMENDS/REPLACES từ regex thô rồi
-   để LLM phân loại lại cho đúng.
+  KHÔNG metadata, CÓ regex:
+    So 2 nguồn: regex vs llm
+    → khớp → da_duyet=TRUE
+    → lệch → da_duyet=FALSE + cờ mismatch → đưa người dùng rà soát
+
+  KHÔNG metadata, KHÔNG regex (biện pháp cuối):
+    Chỉ có LLM (đọc TOÀN VĂN, mục 5.2) — không có gì đối chiếu → da_duyet=FALSE (1
+    nguồn duy nhất không đủ tự tin để tự duyệt), gắn cờ "chỉ 1 nguồn (LLM), chưa đối
+    chiếu được" để người rà soát biết đây là ca cần chú ý hơn ca có ≥2 nguồn lệch nhau.
+```
+
+**⚠️ THAY ĐỔI CHÍNH SÁCH có chủ đích (không phải quên):** v1/v2 gắn duyệt-tự-động
+theo LOẠI CẠNH (GUIDED_BY tự duyệt vì rủi ro thấp; REPLACES/AMENDS luôn cần người vì
+domino hiệu lực). **v3 bỏ quy tắc theo loại cạnh, thay bằng đồng thuận đa nguồn cho
+MỌI loại cạnh như nhau** — kể cả REPLACES/AMENDS sẽ tự động duyệt nếu ≥2-3 nguồn khớp
+nhau (không còn "luôn luôn false" bất chấp đồng thuận). Đây là lựa chọn của người
+dùng (xác nhận 2026-08-21), không phải sơ suất bỏ mất domino-safety.
+
+**Va chạm với `reconcile.py` đã có (quan trọng):** `reconcile_corpus` (chạy trong
+`legal_rag ingest`) đã tự tạo Action từ metadata với chính sách RIÊNG của nó
+(`conf=0.9→duyet=true` cho REPLACES/AMENDS, `conf=0.6→duyet=false` cho GUIDED_BY —
+xem code thật ở mục 6.1). Lệnh `refs` (v3) chạy SAU `ingest`, **không tạo Action mới
+cho nhánh có metadata** mà ĐỌC LẠI Action đã có (nhận diện qua field `source IS
+NULL` — dấu hiệu Action đó do `reconcile.py` tạo, không phải `reference_extractor.py`),
+chạy thêm regex + LLM, rồi **GHI ĐÈ `da_duyet`** theo kết quả đồng thuận 3 nguồn (ghi
+đè quyết định ban đầu của `reconcile.py`, vì đó chỉ dựa trên 1 nguồn — metadata —
+chưa đối chiếu).
+
+**⚠️ Đánh đổi chi phí (đã cảnh báo, người dùng xác nhận chấp nhận 2026-08-21):** LLM
+giờ chạy trên GẦN NHƯ TOÀN BỘ 66k VB (luôn chạy, không phải tập con ~13% như v1).
+Ghi chú cũ trong `backbone.md §23`: Groq free tier TPD 100k token/ngày → ~50 VB/ngày
+→ cả corpus ~1.360 ngày nếu chạy 1 luồng — **cần tính lại phương án quota/song
+song/batch** khi hiện thực (Groq trả phí, provider khác, hoặc dùng Claude Code xử lý
+base data như lần trước). Không chặn việc ghi rule, nhưng PHẢI giải quyết trước khi
+chạy full corpus.
+
+## 1. Ba loại cạnh
+
+| Cạnh | Ý nghĩa | Chiều | Ảnh hưởng hiệu lực? |
+|---|---|---|---|
+| `REPLACES` | src (VB mới) thay thế tgt (VB cũ) | mới → cũ | **CÓ** — duyệt xong tự đóng hiệu lực VB cũ (domino, `close_replaced`) |
+| `AMENDS` | src sửa đổi/bổ sung tgt | mới → cũ | Không đóng hẳn hiệu lực, chỉ đánh dấu đã sửa |
+| `GUIDED_BY` | src căn cứ vào / cụ thể hoá tgt | con → cha (Thông tư→Nghị định→Luật) | KHÔNG |
+
+**v3 — duyệt (`da_duyet`) KHÔNG còn cố định theo loại cạnh** (khác v1/v2, xem mục
+0.1) — quyết định bởi ĐỒNG THUẬN ĐA NGUỒN (mục 2), áp dụng như nhau cho cả 3 loại.
+`REPLACES` vẫn là loại có hệ quả nặng nhất khi duyệt (domino đóng hiệu lực) nên khi
+mismatch, đây là loại đáng ưu tiên rà nhất trong hàng đợi người dùng.
+
+## 2. Đồng thuận đa nguồn (v3) — không có nguồn nào "ưu tiên cao hơn" áp đặt lên nguồn khác
+
+Ba nguồn, LUÔN thử cả ba (không phải chuỗi fallback dừng sớm):
+
+1. **Metadata** — `referenceType` trong `doc.json` (map thẳng `12→REPLACES·10→AMENDS·1,3→GUIDED_BY`).
+   Rỗng nếu VB không có (nạp tay, crawl nguồn khác).
+2. **Regex** — tiêu đề (mục 3, REPLACES/AMENDS) + đoạn "Căn cứ..." (mục 4, GUIDED_BY).
+   Rỗng nếu không khớp mẫu nào.
+3. **LLM** — LUÔN chạy (mục 5), không còn là lớp tuỳ chọn cho tập con như v1.
+
+**Quy tắc duyệt theo SỐ NGUỒN KHẢ DỤNG đồng ý** (chi tiết máy trạng thái: mục 0.1):
+
+| Nguồn khả dụng | Khớp nhau? | `da_duyet` |
+|---|---|---|
+| Metadata + Regex + LLM (cả 3) | Khớp hết | `true` |
+| Metadata + Regex + LLM (cả 3) | ≥1 lệch | `false` + cờ mismatch → người rà |
+| Metadata + LLM (regex rỗng) | Khớp | `true` |
+| Metadata + LLM (regex rỗng) | Lệch | `false` + cờ mismatch |
+| Regex + LLM (không metadata) | Khớp | `true` |
+| Regex + LLM (không metadata) | Lệch | `false` + cờ mismatch |
+| Chỉ LLM (không metadata, không regex) | — (không có gì đối chiếu) | `false` + cờ "1 nguồn duy nhất" |
+
+**Vì sao LLM luôn chạy dù đã có metadata:** không phải để thay thế metadata, mà để
+làm nguồn ĐỘC LẬP THỨ 3 cho phép phát hiện ca metadata SAI (vbpl.vn không phải lúc
+nào cũng gắn `referenceType` đúng — xem mục 5.3 điểm 3) — nếu chỉ so metadata với
+regex mà bỏ LLM thì mất khả năng bắt lỗi khi CẢ metadata LẪN regex cùng sai giống
+nhau (khó xảy ra nhưng không phải zero, vd cả hai đều bị đánh lừa bởi cùng 1 kiểu
+OCR lỗi).
 
 ## 3. Regex — REPLACES/AMENDS (đọc TIÊU ĐỀ, không đọc toàn văn)
 
@@ -105,74 +181,147 @@ bị loại trước khi tạo cạnh.
 ```
 preamble = text[: vị trí "Điều 1"]   (nếu không tìm thấy "Điều 1" → 3000-3500 ký tự đầu)
 mọi số hiệu VB tìm được trong preamble (trừ own_so_hieu, trừ số hiệu đã dùng ở REPLACES/AMENDS)
-    → GUIDED_BY, da_duyet=true
+    → GUIDED_BY (ứng viên — duyệt hay không do đồng thuận đa nguồn, mục 2, KHÔNG còn
+      tự động `da_duyet=true` như v1)
 ```
 
 Đây gần như luôn đúng vì luật VN bắt buộc liệt kê "Căn cứ Luật X; Căn cứ Nghị định
-Y;..." ngay đầu văn bản theo đúng thể thức hành chính — rủi ro sai thấp, không ảnh
-hưởng hiệu lực ai, nên KHÔNG cần qua người duyệt.
+Y;..." ngay đầu văn bản theo đúng thể thức hành chính — rủi ro sai thấp (regex ít khi
+bắt nhầm ở đoạn này), nhưng ở v3 vẫn phải qua bước so khớp với LLM trước khi quyết
+định `da_duyet` (mục 2).
 
-## 5. LLM — chỉ cho tập khó
+## 5. LLM — luôn chạy, 2 vai trò tuỳ số nguồn khả dụng (v3)
 
-**Khi nào gọi:** VB có từ khoá sửa/thay/bãi bỏ ở tiêu đề (tập con, không phải toàn
-corpus — LLM đắt, tất định rẻ). Trên corpus thật tập này chiếm ~13% (8.608/66k).
-
-**Input:** tiêu đề + đoạn preamble (≤3500 ký tự).
-
-**Output JSON bắt buộc:**
+**Input chung — schema JSON không đổi:**
 ```json
 {"refs": [{"target": "24/2023/QH15", "loai": "ThayThe|SuaDoi|CanCu", "confidence": 0.0-1.0}]}
 ```
 
-**System prompt (nguyên văn đã validate):**
+**System prompt (nguyên văn đã validate, dùng cho cả 2 vai trò):**
 > Bạn bóc QUAN HỆ THAM CHIẾU của một văn bản pháp luật Việt Nam thành JSON:
 > `{"refs":[{"target":"số hiệu VB được tham chiếu (vd 24/2023/QH15)","loai":"ThayThe|SuaDoi|CanCu","confidence":0.0-1.0}]}`.
 > ThayThe = văn bản này THAY THẾ VB đích; SuaDoi = SỬA ĐỔI/BỔ SUNG; CanCu = CĂN CỨ.
 > SỬA số hiệu bị lỗi OCR (vd 'QH1 3' → 'QH13', '24/2023/QH1' → '24/2023/QH13').
 > Chỉ lấy VB có SỐ HIỆU rõ. Không có thì `{"refs":[]}`.
 
-**2 việc LLM làm được mà regex không làm được** (đo thật, 6/6 test case LLM thắng):
+### 5.1 Vai trò ĐỒNG THUẬN (khi có metadata và/hoặc regex — 2 hoặc 3 nguồn)
+
+**Input:** tiêu đề + đoạn preamble (≤3500 ký tự) — đủ để LLM đọc, KHÔNG cần toàn văn
+vì mục đích là ĐỘC LẬP đọc lại và cho ý kiến riêng, không phải "sửa" một nguồn khác.
+
+**So khớp:** so tập `(loai, target)` của LLM với tập của metadata (nếu có) và/hoặc
+regex (nếu có) — xem bảng đầy đủ ở mục 2. Không có "nguồn thắng" — kết quả cuối chỉ
+có 2 khả năng: **khớp → duyệt**, **lệch → không duyệt, đưa người rà** (metadata VẪN
+được giữ làm giá trị hiển thị mặc định khi lệch, vì đó là dữ liệu gốc từ nguồn chính
+thức, nhưng `da_duyet=false` bất kể — người dùng là người quyết định cuối, không phải
+thuật toán tự chọn bên nào đúng).
+
+### 5.2 Vai trò TRÍCH XUẤT DUY NHẤT (không metadata, không regex match — biện pháp cuối)
+
+**Input:** TOÀN VĂN bản (không giới hạn ở tiêu đề/preamble — không còn gợi ý cấu
+trúc nào để bám, có thể quan hệ nằm ở bất kỳ đâu trong văn bản). Cắt theo giới hạn
+token của model (`synth_context_budget_chars`-style — xem `config.py`), ưu tiên giữ
+preamble + các đoạn có nhắc số hiệu VB nếu văn bản quá dài để đưa hết.
+
+**Không có gì để đối chiếu** — kết quả LLM là kết quả duy nhất, nhưng vẫn
+`da_duyet=false` (1 nguồn không đủ để tự động duyệt theo quy tắc đồng thuận mục 2) —
+gắn cờ riêng để người rà biết đây là ca "chỉ có LLM", mức tin thấp hơn ca có nguồn
+đối chiếu mà khớp.
+
+### 5.3 Vì sao LLM cần thiết (đo thật, 6/6 test case LLM thắng regex)
+
 1. Phân biệt đúng "bãi bỏ" (REPLACES) khỏi "sửa đổi" (AMENDS) khi câu phức tạp/lẫn
    nhiều động từ trong cùng tiêu đề.
 2. **Vá lỗi OCR số hiệu** — regex chỉ khớp chuỗi sạch, LLM suy luận ra số đúng từ
    ngữ cảnh (`"QH1 3"` → `"QH13"`).
+3. **Bắt lỗi ở chính metadata** — vbpl.vn không phải lúc nào cũng gắn `referenceType`
+   đúng 100%; LLM đọc độc lập là nguồn thứ 3 giúp phát hiện ca metadata VÀ regex cùng
+   sai (hiếm nhưng không phải zero — vd cùng bị đánh lừa bởi 1 kiểu lỗi OCR).
 
-**Hợp nhất kết quả khi có LLM:** GIỮ nguyên GUIDED_BY từ regex (mục 4), BỎ
-AMENDS/REPLACES từ regex thô (mục 3), thay bằng kết quả LLM. Không trùng lặp cạnh
-(so theo cặp `(edge, target)` đã có).
+## 6. Chính sách confidence / duyệt (v3 — đồng thuận, không theo loại cạnh)
 
-## 6. Chính sách confidence / duyệt
-
-| Nguồn | `confidence` mặc định | `da_duyet` |
+| Tình huống | `confidence` ghi lại | `da_duyet` |
 |---|---|---|
-| `referenceType` (vbpl) | không cần field này (nguồn cấu trúc) | REPLACES/AMENDS: false · GUIDED_BY: true |
-| Regex text (`text_regex`) | 0.85 (REPLACES/AMENDS) · 0.6 (GUIDED_BY) | REPLACES/AMENDS: false · GUIDED_BY: true |
-| LLM (`llm`) | do LLM tự chấm 0.0–1.0 | luôn false (REPLACES/AMENDS/CanCu qua LLM đều chờ duyệt) |
-| Tiêu đề tất định đã tinh chỉnh (`title_rule`) | 0.85 | false |
+| Metadata + Regex + LLM khớp hết | giữ nguyên của từng nguồn (metadata: không field riêng; regex 0.85/0.6; llm tự chấm) | `true` |
+| Metadata + LLM khớp (regex rỗng) | như trên | `true` |
+| Regex + LLM khớp (không metadata) | như trên | `true` |
+| Bất kỳ tổ hợp nào ở trên nhưng LỆCH | như trên, giữ NGUYÊN VĂN cả 2-3 kết quả (không xoá) | `false` + `mismatch=true` |
+| Chỉ LLM (không metadata, không regex) | LLM tự chấm | `false` + `only_llm=true` |
 
-Action luôn ghi `source` (để truy vết cạnh này từ đâu ra: `text_regex`/`llm`/`title_rule`).
+**KHÔNG còn "nguyên tắc bất biến theo loại cạnh" ở v3** (mục 1 đã sửa lại) — đây là
+đổi chính sách CÓ CHỦ ĐÍCH theo yêu cầu người dùng (2026-08-21): duyệt hay không do
+đồng thuận đa nguồn quyết định như nhau cho REPLACES/AMENDS/GUIDED_BY. Điều duy nhất
+còn giữ: `REPLACES` là loại có hệ quả nặng nhất khi được duyệt (domino đóng hiệu lực
+qua `close_replaced`), nên khi bị `mismatch`, nó nên đứng ĐẦU hàng đợi người rà (ưu
+tiên hiển thị, không phải ưu tiên xử lý tự động).
 
-## 7. Mô hình dữ liệu (khớp `genquesai/legal_rag/ingestion/reconcile.py` đã có)
+Action luôn ghi `source` (từ đâu ra: `referenceType`/`text_regex`/`llm`) — v3 thêm
+`mismatch`/`only_llm` để giữ vết đối chiếu, và giữ NGUYÊN VĂN kết quả của mọi nguồn
+tham gia so sánh khi có mâu thuẫn (không xoá thông tin của "bên thua" — không còn
+khái niệm bên thua ở v3, tất cả nguồn ngang hàng).
+
+## 7. Mô hình dữ liệu (v3 — field đồng thuận, không còn field "verified/mismatch theo 1 nguồn chính")
 
 ```
-(a:Action {action_id, loai, confidence, da_duyet, source, enacted_by, ngay_hieu_luc})
+(a:Action {
+  action_id, loai, confidence, da_duyet, source, enacted_by, ngay_hieu_luc,
+  nguon_metadata,    # string (JSON) hoặc null — kết quả nhánh metadata nếu có
+  nguon_regex,       # string (JSON) hoặc null — kết quả nhánh regex nếu có
+  nguon_llm,         # string (JSON) — kết quả LLM (LUÔN có, v3 luôn chạy LLM)
+  mismatch,          # bool — có ≥2 nguồn khả dụng nhưng KHÔNG khớp nhau
+  only_llm,          # bool — chỉ có LLM (không metadata, không regex) — biện pháp cuối
+})
 (a)-[:ENACTED_BY]->(src:Norm)     # Action này do src ban hành
 (a)-[:AFFECTS]->(tgt:Norm)        # Action này tác động tới tgt
 (src)-[:REPLACES|AMENDS|GUIDED_BY]->(tgt)   # cạnh trực tiếp — "đường tắt" cho truy vấn/retrieval
 ```
 
+Giữ nguyên văn cả 3 nguồn (`nguon_metadata`/`nguon_regex`/`nguon_llm`) thay vì chỉ
+"kết quả cuối + 1 field gợi ý phụ" (thiết kế v2 cũ) — vì ở v3 không có nguồn nào
+"chính", người rà cần thấy đủ cả 2-3 góc nhìn để tự quyết định khi có mismatch.
+
 `action_id` tất định: `f"{src_norm_id}->{target_so_hieu}:{edge}:{source_tag}"` — idempotent,
-chạy lại không tạo trùng (MERGE).
+chạy lại không tạo trùng (MERGE). Các field `llm_*` không đổi `action_id` (không tạo
+Action thứ 2 khi LLM verify — SET thêm field vào Action đã có).
 
-## 8. Resume / không xử lý lại
+## 8. Resume / không xử lý lại (3 flag — 1 theo mỗi nhánh A/B/C)
 
-Mỗi Norm đánh dấu đã xử lý bằng 1 flag (`refs_done` cho regex-only, `refs_llm_done`
-khi có chạy LLM) để tránh chạy lại tốn kém (đặc biệt LLM). Batch mới chỉ xử lý VB
-CHƯA có flag tương ứng.
+| Flag | Ý nghĩa |
+|---|---|
+| `refs_meta_done` | đã xử lý xong nhánh A (có metadata — đối chiếu metadata+regex?+llm) |
+| `refs_regex_done` | đã xử lý xong nhánh B (không metadata, có regex — đối chiếu regex+llm) |
+| `refs_llm_done` | đã xử lý xong nhánh C (không metadata, không regex — chỉ llm) |
+
+Mỗi Norm chỉ rơi vào ĐÚNG 1 nhánh theo NGUỒN NÀO KHẢ DỤNG (A nếu có metadata dù regex
+có match hay không; B nếu không metadata nhưng regex match; C nếu cả hai đều không)
+— việc phân nhánh (A/B/C) chỉ quyết định INPUT nào đưa cho LLM và SO VỚI GÌ, không
+quyết định ai thắng ai (đó là đồng thuận, mục 2). Tách riêng tên flag để dễ audit "VB
+này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng nhánh.
 
 ## 9. Việc cần làm để hiện thực trong `genquesai/legal_rag/`
 
-- [ ] `ingestion/reference_extractor.py` — regex mục 3 + 4, hàm `apply_references` ghi Action+cạnh.
-- [ ] `ingestion/title_refs_parser.py` (hoặc gộp vào trên) — regex tiêu đề tinh chỉnh (mục 3, neo động từ).
-- [ ] Lớp gọi LLM (tái dùng `agent/llm.py` đã có sẵn) theo prompt mục 5.
-- [ ] CLI wiring (`cli.py`) — lệnh chạy dò quan hệ theo lô, có `--llm` bật/tắt giống `legal_rag ingest`.
+**Đã xong (v1, commit `cd1f545`):**
+- [x] `ingestion/reference_extractor.py` — regex mục 3 + 4, hàm `apply_references` ghi Action+cạnh.
+- [x] Prompt LLM (mục 5) + `extract_references_llm` — đã viết, tái dùng nguyên cho v3.
+- [x] CLI `legal_rag refs [--llm]`.
+- [x] Test `tests/test_reference_extractor.py` (6 ca, khoá bẫy đã biết).
+
+**Còn thiếu để lên v3 (đồng thuận đa nguồn):**
+- [ ] Đọc `referenceType` từ `doc.json` thành list `(loai, edge, so_hieu_hoặc_norm_id)`
+      — TÁI DÙNG `reconcile.plan_for_norm`/`REL_MAP`, không viết lại logic map riêng.
+- [ ] Hàm thuần `dong_thuan(metadata, regex, llm) -> {khop: bool, chi_tiet: {...}}` —
+      so 2 hoặc 3 tập `(loai, target)` tuỳ nguồn nào khả dụng (mục 2 bảng). Test được
+      không cần DB (giống các hàm `extract_*` hiện có).
+- [ ] Hàm orchestrator `resolve_relations(neo, llm, norm_id, so_hieu, data, title, text)`
+      → xác định nhánh A/B/C → gọi LLM đúng input theo nhánh (5.1 preamble / 5.2 toàn
+      văn) → gọi `dong_thuan` → trả kết quả cuối + `da_duyet`.
+- [ ] **Xử lý va chạm với `reconcile.py`** (đã nêu ở mục 0.1): với VB CÓ metadata,
+      `reconcile_corpus` (chạy lúc `ingest`) đã tạo Action rồi (`source IS NULL`) —
+      `refs` (v3) phải ĐỌC LẠI Action đó (không tạo Action thứ 2 trùng cạnh), chạy
+      thêm regex+LLM, rồi UPDATE `da_duyet` + field đồng thuận (mục 7) lên Action có sẵn.
+- [ ] Ghi field `nguon_metadata`/`nguon_regex`/`nguon_llm`/`mismatch`/`only_llm` vào
+      `Action` (mục 7) — sửa `_EDGE_TMPL`/`apply_references`, thêm câu lệnh UPDATE
+      riêng cho ca "Action đã có từ reconcile, giờ chỉ bổ sung field".
+- [ ] Đổi flag resume 2→3 (`refs_meta_done`/`refs_regex_done`/`refs_llm_done` — mục 8).
+- [ ] **Trước khi chạy full corpus:** chốt phương án quota LLM (mục 0.1 đã cảnh báo —
+      chi phí tăng từ ~13% VB lên ~100% VB, LLM giờ chạy trên MỌI VB không chỉ tập khó).
