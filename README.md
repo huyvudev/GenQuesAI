@@ -77,6 +77,7 @@ cd genquesai/legal_rag
 cp .env.example .env                             # rồi điền NEO4J_PASSWORD/QDRANT_API_KEY
 python -m genquesai.legal_rag cdi status          # tổng quan: hiệu lực + published + ledger + đối soát
 python -m genquesai.legal_rag refs --llm          # dò quan hệ REPLACES/AMENDS/GUIDED_BY (quy tắc: xem rule.md)
+python -m genquesai.legal_rag refs --consensus    # v3: đồng thuận metadata+regex+LLM, LLM luôn chạy
 ```
 
 `.env` không commit (gitignored) — mẫu ở `genquesai/legal_rag/.env.example`.

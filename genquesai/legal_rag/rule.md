@@ -306,22 +306,26 @@ này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng n
 - [x] CLI `legal_rag refs [--llm]`.
 - [x] Test `tests/test_reference_extractor.py` (6 ca, khoá bẫy đã biết).
 
-**Còn thiếu để lên v3 (đồng thuận đa nguồn):**
-- [ ] Đọc `referenceType` từ `doc.json` thành list `(loai, edge, so_hieu_hoặc_norm_id)`
-      — TÁI DÙNG `reconcile.plan_for_norm`/`REL_MAP`, không viết lại logic map riêng.
-- [ ] Hàm thuần `dong_thuan(metadata, regex, llm) -> {khop: bool, chi_tiet: {...}}` —
-      so 2 hoặc 3 tập `(loai, target)` tuỳ nguồn nào khả dụng (mục 2 bảng). Test được
-      không cần DB (giống các hàm `extract_*` hiện có).
-- [ ] Hàm orchestrator `resolve_relations(neo, llm, norm_id, so_hieu, data, title, text)`
-      → xác định nhánh A/B/C → gọi LLM đúng input theo nhánh (5.1 preamble / 5.2 toàn
-      văn) → gọi `dong_thuan` → trả kết quả cuối + `da_duyet`.
-- [ ] **Xử lý va chạm với `reconcile.py`** (đã nêu ở mục 0.1): với VB CÓ metadata,
-      `reconcile_corpus` (chạy lúc `ingest`) đã tạo Action rồi (`source IS NULL`) —
-      `refs` (v3) phải ĐỌC LẠI Action đó (không tạo Action thứ 2 trùng cạnh), chạy
-      thêm regex+LLM, rồi UPDATE `da_duyet` + field đồng thuận (mục 7) lên Action có sẵn.
-- [ ] Ghi field `nguon_metadata`/`nguon_regex`/`nguon_llm`/`mismatch`/`only_llm` vào
-      `Action` (mục 7) — sửa `_EDGE_TMPL`/`apply_references`, thêm câu lệnh UPDATE
-      riêng cho ca "Action đã có từ reconcile, giờ chỉ bổ sung field".
-- [ ] Đổi flag resume 2→3 (`refs_meta_done`/`refs_regex_done`/`refs_llm_done` — mục 8).
+**Đã xong (v3, commit sau `485b915`) — `ingestion/consensus.py`:**
+- [x] `extract_metadata_relations(data)` — đọc `referenceType`/`targetDocument.docNum`
+      trực tiếp từ `doc.json` (đã xác nhận có sẵn trên dữ liệu thật, không cần tra DB
+      thêm), tái dùng `REL_MAP` của `reconcile.py` (không viết lại logic map riêng).
+- [x] `dong_thuan(metadata, regex, llm)` — hàm thuần, so 2-3 tập `(edge, target)` tuỳ
+      nguồn khả dụng, trả `{"nhanh": "A"|"B"|"C", "khop": bool|None, ...}`. Test ở
+      `tests/test_consensus.py` (5 ca, gồm cả nhánh C `khop=None` khác `False`).
+- [x] `resolve_relations(...)` — orchestrator: xác định nhánh, gọi LLM đúng input
+      (preamble cho A/B, toàn văn ≤12.000 ký tự cho C), gọi `dong_thuan`, ghi kết quả.
+- [x] **Xử lý va chạm với `reconcile.py`:** nhánh A tìm Action có sẵn qua
+      `source IS NULL` (dấu hiệu do `reconcile_corpus` tạo lúc `ingest`) rồi UPDATE
+      field đồng thuận + `da_duyet` lên Action đó — KHÔNG tạo Action thứ 2.
+- [x] Field `nguon_metadata`/`nguon_regex`/`nguon_llm`/`mismatch`/`only_llm` trên `Action`.
+- [x] 3 flag resume riêng (`refs_meta_done`/`refs_regex_done`/`refs_llm_done`).
+- [x] CLI: `legal_rag refs --consensus`.
+
+**Còn lại — chưa test được với DB thật (cần Neo4j sống), rủi ro cần biết trước khi chạy:**
+- [ ] `resolve_relations`/`process_corpus` mới verify được ĐƯỜNG PURE (`dong_thuan`,
+      `extract_metadata_relations`) qua test; phần chạm Cypher (`_ghi_ket_qua_dong_thuan`,
+      `_FIND_META_ACTIONS`) CHƯA chạy thử trên DB thật — nên chạy `--limit`/dry-run nhỏ
+      trước khi full corpus.
 - [ ] **Trước khi chạy full corpus:** chốt phương án quota LLM (mục 0.1 đã cảnh báo —
       chi phí tăng từ ~13% VB lên ~100% VB, LLM giờ chạy trên MỌI VB không chỉ tập khó).

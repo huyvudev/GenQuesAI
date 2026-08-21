@@ -132,12 +132,31 @@ def cmd_embed(args) -> int:
 
 
 def cmd_refs(args) -> int:
-    """Dò quan hệ REPLACES/AMENDS/GUIDED_BY (regex + LLM tuỳ chọn) — rule.md."""
+    """Dò quan hệ REPLACES/AMENDS/GUIDED_BY — rule.md.
+
+    Mặc định: regex + LLM tuỳ chọn (`--llm`), không đối chiếu metadata (v1).
+    `--consensus`: luồng v3 — metadata + regex + LLM ĐỒNG THUẬN đa nguồn (rule.md
+    mục 0.1/2), LLM LUÔN chạy (không cần `--llm`), duyệt tự động chỉ khi các nguồn
+    khả dụng khớp nhau."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
-    from .ingestion.reference_extractor import extract_corpus_references
     s = get_settings()
     base = Path(args.corpus or s.corpus_dir)
     srcs = args.src or ["*"]
+
+    if args.consensus:
+        from .agent.llm import LLM
+        from .ingestion.consensus import process_corpus
+        llm = LLM(settings=s)
+        with Neo4jClient(s) as c:
+            c.verify()
+            res = process_corpus(c, llm, base, srcs, resume=not args.no_resume)
+        print(f"✓ refs --consensus xong: {res['processed']} VB · "
+              f"nhánh A={res['A']}/B={res['B']}/C={res['C']} · "
+              f"khớp={res['khop']} · lệch={res['mismatch']} (cần rà) · "
+              f"chỉ-LLM={res['only_llm']} (cần rà)")
+        return 0
+
+    from .ingestion.reference_extractor import extract_corpus_references
     llm = None
     if args.llm:
         from .agent.llm import LLM
@@ -319,9 +338,11 @@ def main(argv=None) -> int:
     pr.add_argument("--src", nargs="+", default=None, help="corpus con (mặc định tất cả)")
     pr.add_argument("--llm", action="store_true",
                     help="bật LLM cho VB có từ khoá sửa/thay/bãi bỏ ở tiêu đề (vá OCR + phân loại đúng hơn)")
+    pr.add_argument("--consensus", action="store_true",
+                    help="luồng v3: metadata+regex+LLM đồng thuận đa nguồn (rule.md §0.1) — LLM LUÔN chạy, bỏ qua --llm/--pace")
     pr.add_argument("--no-resume", action="store_true", dest="no_resume",
-                    help="xử lý lại cả VB đã có flag refs_done/refs_llm_done (mặc định bỏ qua)")
-    pr.add_argument("--pace", type=float, default=0.0, help="giây nghỉ giữa các lượt LLM (tránh rate-limit)")
+                    help="xử lý lại cả VB đã có flag refs_*_done (mặc định bỏ qua)")
+    pr.add_argument("--pace", type=float, default=0.0, help="giây nghỉ giữa các lượt LLM (chỉ áp dụng khi KHÔNG --consensus)")
     pr.set_defaults(func=cmd_refs)
 
     # CDI — Continuous Document Integration (backbone.md §9)
