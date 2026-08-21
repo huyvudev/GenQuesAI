@@ -61,3 +61,39 @@ cp genquesai.example.toml genquesai.toml   # rồi sửa legal_rag_root cho đú
 
 `.env` của chính hệ RAG (Neo4j/Qdrant/API key) vẫn nằm ở repo đó, không phải ở đây —
 xem `generator/common.py::nap_env()`.
+
+## `genquesai/legal_rag/` — đọc/ghi DB độc lập (CDI)
+
+Bản clone cơ chế **tích hợp văn bản liên tục** (CDI — hashing/validate/dedup/ledger/
+resync/undo/pipeline/watch/status) từ repo Chatbot-Law, để `generator/` đọc corpus
+qua Neo4j **mà không cần trỏ `legal_rag_root` sang repo đó** (khác với mục Cấu hình ở
+trên — đó chỉ còn cần cho đường chấm hộp trắng `--adapter legal_rag`, thứ *đang được
+đo* nên không tự chủ được). Chi tiết phạm vi clone/lý do đặt tên: xem
+`genquesai/legal_rag/__init__.py`.
+
+```bash
+pip install -e ".[cdi]"                          # + ".[cdi-embed]" nếu cần `embed`/`cdi watch`
+cd genquesai/legal_rag
+cp .env.example .env                             # rồi điền NEO4J_PASSWORD/QDRANT_API_KEY
+python -m genquesai.legal_rag cdi status          # tổng quan: hiệu lực + published + ledger + đối soát
+```
+
+`.env` không commit (gitignored) — mẫu ở `genquesai/legal_rag/.env.example`.
+
+### DB online
+
+Ngoài Neo4j/Qdrant local (docker compose), có sẵn **DB online trên VPS** —
+`221.132.33.149` (domain `hrental.name.vn`) — giữ đúng bản dữ liệu **mới nhất** (đã
+qua các đợt crawl/ingest sau này mà local có thể chưa có). Server này **chỉ còn DB**:
+chatbot BE/FE đã gỡ (2026-08-21), Neo4j (`7687`) + Qdrant (`6333`/`6334`) mở thẳng ra
+internet cho hệ ngoài kết nối — Neo4j cần mật khẩu, **Qdrant bắt buộc api-key** (trước
+đây không có auth). Trỏ `genquesai/legal_rag/.env` vào đó:
+
+```bash
+NEO4J_URI=bolt://221.132.33.149:7687
+QDRANT_URL=http://221.132.33.149:6333
+QDRANT_API_KEY=...   # xin key/mật khẩu Neo4j riêng, không ghi trong repo
+```
+
+Trước khi đổi giữa local ↔ online, chạy `cdi status` để so `Norm`/ledger — đừng đồng
+bộ ngược nếu local đang cũ hơn.
