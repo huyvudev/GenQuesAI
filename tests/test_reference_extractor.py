@@ -169,6 +169,49 @@ def test_fallback_khong_lay_phan_truoc_dieu_1() -> None:
     assert rel == [("ThayThe", "REPLACES", "16/2003/QĐ-BKHCN")]
 
 
+def test_menh_de_mo_ta_khong_bi_gan_nham_lam_dich() -> None:
+    """§3.5 (ca thật 16/2016/TT-BKHCN, 2026-08-22): "Sửa đổi một số điều của Thông
+    tư X ngày... hướng dẫn thi hành Nghị định Y..., được sửa đổi, bổ sung theo Thông
+    tư Z1, Z2 và Z3" — CHỈ X là đích thật (AMENDS). Y/Z1/Z2/Z3 chỉ được NHẮC trong
+    mệnh đề mô tả X (nó hướng dẫn NĐ nào, nó từng bị sửa bởi TT nào), không phải đối
+    tượng VB hiện tại tác động."""
+    title = (
+        "Thông tư số 16/2016/TT-BKHCN Sửa đổi, bổ sung một số điều của Thông tư số "
+        "01/2007/TT-BKHCN ngày 14 tháng 02 năm 2007 hướng dẫn thi hành Nghị định số "
+        "103/2006/NĐ-CP ngày 22 tháng 9 năm 2006 của Chính phủ quy định chi tiết và "
+        "hướng dẫn thi hành một số điều của Luật Sở hữu trí tuệ về sở hữu công "
+        "nghiệp, được sửa đổi, bổ sung theo Thông tư số 13/2010/TT-BKHCN ngày 30 "
+        "tháng 7 năm 2010, Thông tư số 18/2011/TT-BKHCN ngày 22 tháng 7 năm 2011 và "
+        "Thông tư số 05/2013/TT-BKHCN ngày 20 tháng 02 năm 2013"
+    )
+    assert extract_title_relations(title, "16/2016/TT-BKHCN") == [
+        ("SuaDoi", "AMENDS", "01/2007/TT-BKHCN")
+    ]
+
+
+def test_dong_ngoac_kep_thoat_menh_de_mo_ta_ve_lai_dich() -> None:
+    """§3.5 (ca thật 10/2007/QĐ-BKHCN, 2026-08-22): "...thay thế Quyết định A..., B
+    ...về việc "sửa đổi... của Quy định... ban hành kèm theo A..."" và Quyết định
+    C..." — A và C là đích (REPLACES), B mô tả trong ngoặc kép cũng là đích riêng
+    (câu trước ngoặc), số hiệu A LẶP LẠI bên trong ngoặc không tính thêm, C sau khi
+    ngoặc ĐÃ ĐÓNG (dù trong cùng gap) vẫn là đích thật."""
+    text = (
+        "Điều 2. Quyết định này có hiệu lực sau 15 ngày và thay thế Quyết định số "
+        '16/2003/QĐ-BKHCN ngày 18/7/2003 của Bộ trưởng về việc ban hành "Quy định '
+        'về việc tuyển chọn tổ chức và cá nhân", Quyết định số 20/2005/QĐ-BKHCN '
+        'ngày 23/12/2005 của Bộ trưởng về việc "sửa đổi, bổ sung các Điều 6, 7 của '
+        "Quy định ban hành kèm theo Quyết định số 16/2003/QĐ-BKHCN ngày 18/7/2003 "
+        'của Bộ trưởng" và Quyết định số 06/2006/QĐ-BKHCN ngày 26/01/2006 của Bộ '
+        "trưởng."
+    )
+    rel = extract_final_clause_relations(text, "10/2007/QĐ-BKHCN")
+    assert set(rel) == {
+        ("ThayThe", "REPLACES", "16/2003/QĐ-BKHCN"),
+        ("ThayThe", "REPLACES", "20/2005/QĐ-BKHCN"),
+        ("ThayThe", "REPLACES", "06/2006/QĐ-BKHCN"),
+    }
+
+
 def test_html_to_text_giu_lien_mach_so_hieu_bi_tag_chen_giua() -> None:
     """Bug thật 2026-08-22 (VB 113783/most): HTML gốc tô đậm/nghiêng riêng TỪNG KÝ TỰ
     của số hiệu (vd do OCR/export PDF), <em> chèn giữa "QH" và "13". Dùng

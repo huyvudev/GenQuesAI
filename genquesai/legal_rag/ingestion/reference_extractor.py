@@ -49,6 +49,17 @@ _TUNG_PHAN = re.compile(
 _THAY_THE_RE = re.compile(r"thay\s+thế", re.IGNORECASE)
 _BAIBO_RE = re.compile(r"bãi\s+bỏ|h[uủ]y\s+bỏ|huỷ\s+bỏ", re.IGNORECASE)
 
+# §3.5 (phát hiện 2026-08-22, ca thật 16/2016/TT-BKHCN): câu/tiêu đề dài có thể liệt
+# kê MỘT SỐ HIỆU ĐÍCH THẬT rồi tiếp tục bằng MỆNH ĐỀ MÔ TẢ về chính số hiệu đó (nó
+# hướng dẫn thi hành ai, nó từng được sửa bởi ai) — số hiệu xuất hiện TRONG mệnh đề mô
+# tả không phải đích của VB hiện tại. Giới hạn CHỦ ĐÍCH ở 4 mẫu phổ biến nhất đã thấy
+# trên dữ liệu thật (không cố vét cạn — bài toán ngữ nghĩa câu, xem rule.md §3.5 về
+# rủi ro/giới hạn của cách tiếp cận này).
+_MO_TA_RE = re.compile(
+    r"hướng\s+dẫn\s+thi\s+hành|quy\s+định\s+chi\s+tiết|quy\s+định\s+về|"
+    r"(?:được\s+)?sửa\s+đổi[,]?\s*bổ\s+sung", re.IGNORECASE)
+_QUOTE_CHARS = '"“”'
+
 
 def html_to_text(html: str) -> str:
     """`toanvan.html` -> text thuần, dùng cho mọi hàm dò quan hệ dựa trên regex.
@@ -106,6 +117,50 @@ def _phan_loai_dong_tu(low: str) -> tuple[str, str] | None:
     return loai, edge
 
 
+def _dich_trong_cau(cau: str, own_so_hieu: str | None = None) -> list[str]:
+    """Số hiệu là ĐÍCH THẬT trong câu — không phải mọi số hiệu xuất hiện (rule.md
+    §3.5). Số hiệu ĐẦU TIÊN (sau khi loại `own_so_hieu` — tiêu đề luôn bắt đầu bằng
+    CHÍNH số hiệu của văn bản, vd "Thông tư số 16/2016/TT-BKHCN Sửa đổi...", đó
+    KHÔNG phải đích) luôn là đích. Số hiệu tiếp theo bị LOẠI nếu nằm trong đoạn NGAY
+    SAU 1 mẫu MÔ TẢ (_MO_TA_RE — "hướng dẫn thi hành X", "quy định chi tiết Y",
+    "được sửa đổi theo Z"...) và KHÔNG nằm trong dấu ngoặc kép đã ĐÓNG lại (dấu ngoặc
+    kép đóng = ranh giới thoát mệnh đề mô tả, quay lại liệt kê đích — ca thật
+    10/2007/QĐ-BKHCN: "...về việc "sửa đổi... 16/2003..."", Quyết định số 06/2006..."
+    — 06/2006 SAU dấu ngoặc đóng vẫn là đích thật).
+
+    Bảo thủ có chủ đích: chỉ nhận 4 mẫu mô tả phổ biến nhất đã thấy trên dữ liệu
+    thật (không cố vét cạn mọi cách diễn đạt) — xem rule.md §3.5 về rủi ro."""
+    cau_n = _norm_sh(cau)
+    own = _norm_sh(own_so_hieu) if own_so_hieu else None
+    matches = [m for m in SOHIEU_RE.finditer(cau_n) if not own or m.group(0) != own]
+    if not matches:
+        return []
+    out = [matches[0].group(0)]
+    trong_mo_ta = False
+    trong_ngoac = False
+    prev_end = matches[0].end()
+    for m in matches[1:]:
+        gap = cau_n[prev_end:m.start()]
+        # Tách gap theo dấu ngoặc kép — CHỈ kiểm tra _MO_TA_RE trên từng ĐOẠN NGOÀI
+        # ngoặc riêng lẻ, KHÔNG search trên cả gap gộp lại. Bắt buộc: nếu 1 cặp ngoặc
+        # mở+đóng nằm TRỌN trong CÙNG 1 gap (ca thật 10/2007/QĐ-BKHCN, đoạn đầu —
+        # "...về việc "Quy định về việc tuyển chọn..."" mở+đóng ngay trong 1 gap),
+        # search trên cả gap sẽ vẫn "thấy" cụm mô tả nằm BÊN TRONG ngoặc đã đóng.
+        doan_list = re.split(f"[{re.escape(_QUOTE_CHARS)}]", gap)
+        for idx, doan in enumerate(doan_list):
+            if not trong_ngoac:
+                if _MO_TA_RE.search(doan):
+                    trong_mo_ta = True
+            if idx < len(doan_list) - 1:      # còn dấu ngoặc phía sau đoạn này -> đảo trạng thái
+                trong_ngoac = not trong_ngoac
+                if not trong_ngoac:            # vừa đóng ngoặc -> thoát mệnh đề mô tả
+                    trong_mo_ta = False
+        if not trong_mo_ta:
+            out.append(m.group(0))
+        prev_end = m.end()
+    return list(dict.fromkeys(_norm_sh(x) for x in out))
+
+
 def _quan_he_theo_cau(doan: str, own_so_hieu: str | None = None,
                       exclude: set[str] | None = None) -> list[tuple[str, str, str]]:
     """Tách `doan` thành từng CÂU (theo dấu . hoặc ;), phân loại + trích số hiệu
@@ -119,7 +174,7 @@ def _quan_he_theo_cau(doan: str, own_so_hieu: str | None = None,
         used.add(own)
     out: list[tuple[str, str, str]] = []
     for cau in re.split(r"(?<=[.;])\s+", doan):
-        shs = [s for s in _sohieu_in(cau) if s and s not in used]
+        shs = [s for s in _dich_trong_cau(cau, own) if s and s not in used]
         if not shs:
             continue
         kq = _phan_loai_dong_tu(cau.lower())

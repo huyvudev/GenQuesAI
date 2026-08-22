@@ -280,17 +280,55 @@ so trước/sau khi sửa 2 bug (a)+(b), đã dọn dữ liệu tồn đọng tr
 | VB có xung đột loại cạnh | 42 (26,9%) | 32 (23,2%) |
 | **Tổng số cạnh xung đột** | **94** | **62 (−34%)** |
 
-**Giới hạn CÒN LẠI, đã biết, QUYẾT ĐỊNH KHÔNG VÁ THÊM (2026-08-22):** tiêu đề/câu dài
-có nhiều mệnh đề mô tả phụ (vd *"...sửa đổi một số điều của Thông tư X **hướng dẫn
-thi hành** Nghị định Y..."* — chỉ X là đích thật, Y chỉ được NHẮC trong mệnh đề mô tả
-X, không phải đối tượng bị VB hiện tại tác động) vẫn khiến regex gán nhầm loại cạnh
-cho các số hiệu "chỉ được nhắc tới" (ca thật `16/2016/TT-BKHCN`). Đây là bài toán
-ngữ nghĩa câu thật — cần phân biệt "đích của hành động" với "số hiệu chỉ được nhắc
-trong mệnh đề mô tả", regex khó giải quyết triệt để mà không phình to phức tạp/khó
-bảo trì. **Quyết định (người dùng xác nhận):** KHÔNG vá thêm — để đúng vai trò thiết
-kế: khi regex sai kiểu này, LLM (đã đúng trong các ca đã kiểm) sẽ tự lệch → gắn cờ →
-đưa người rà soát. Không cần regex hoàn hảo, chỉ cần đủ tốt để làm 1 trong 3 nguồn
-đối chiếu.
+**Giới hạn phát hiện lúc này, ban đầu quyết định KHÔNG vá — sau đó thử vá có giới
+hạn (mục 3.5), thành công:** tiêu đề/câu dài có nhiều mệnh đề mô tả phụ (vd
+*"...sửa đổi một số điều của Thông tư X **hướng dẫn thi hành** Nghị định Y..."* —
+chỉ X là đích thật, Y chỉ được NHẮC trong mệnh đề mô tả X) khiến regex gán nhầm loại
+cạnh cho số hiệu "chỉ được nhắc tới" (ca thật `16/2016/TT-BKHCN`).
+
+### 3.5 Vá có giới hạn: phân biệt "đích thật" với "số hiệu trong mệnh đề mô tả"
+
+**Quyết định (người dùng, sau khi cân nhắc rủi ro mục 3.4 nêu):** thử vá, GIỚI HẠN
+CHỦ ĐÍCH ở 4 mẫu mô tả phổ biến nhất đã thấy trên dữ liệu thật (không cố vét cạn
+mọi cách diễn đạt tiếng Việt):
+```
+"hướng dẫn thi hành" · "quy định chi tiết" · "quy định về" · "(được) sửa đổi, bổ sung"
+```
+
+**Thuật toán (`_dich_trong_cau`):** với mỗi câu, số hiệu ĐẦU TIÊN (sau khi loại
+`own_so_hieu` — tiêu đề luôn mở đầu bằng CHÍNH số hiệu VB, vd *"Thông tư số
+16/2016/TT-BKHCN **Sửa đổi**..."*, đó không phải đích) luôn là đích. Số hiệu tiếp
+theo bị LOẠI nếu đoạn văn bản GIỮA nó và số hiệu-đích-gần-nhất-trước-đó chứa 1 trong
+4 mẫu mô tả trên. **Ranh giới thoát:** dấu ngoặc kép ĐÃ ĐÓNG — nếu mệnh đề mô tả nằm
+trong `"..."` và ngoặc đã đóng trước số hiệu tiếp theo, số hiệu đó quay lại là đích
+thật (ca thật `10/2007/QĐ-BKHCN`: *"...thay thế QĐ A..., QĐ B ...về việc "sửa đổi...
+của Quy định... A..."" và QĐ C..."* — A, B, C đều là đích REPLACES; nội dung trong
+ngoặc kép mô tả B không tính, và C sau khi ngoặc đóng vẫn là đích).
+
+**Bẫy khi hiện thực (tự phát hiện, đã sửa trong lúc viết):** nếu 1 cặp ngoặc mở+đóng
+nằm TRỌN trong CÙNG 1 khoảng gap (không trải qua nhiều gap), search mẫu mô tả trên
+CẢ gap gộp lại vẫn "thấy" được cụm mô tả nằm BÊN TRONG ngoặc đã đóng — phải tách gap
+theo từng đoạn trong/ngoài ngoặc, chỉ search từng đoạn NGOÀI ngoặc riêng lẻ.
+
+**Đo lường (local Neo4j, `--limit 300`, so với mục 3.4, đã dọn dữ liệu tồn đọng
+trước khi đo):**
+
+| | Sau mục 3.4 | Sau mục 3.5 |
+|---|---|---|
+| `(regex∪LLM)⊆metadata` | 40/138 (29,0%) | 42/138 (30,4%) |
+| `regex==LLM` | 41/138 (29,7%) | 42/138 (30,4%) |
+| VB có xung đột | 32/138 (23,2%) | 28/138 (20,3%) |
+| **Tổng cạnh xung đột** | **62** | **47 (−24%)** |
+
+**Tổng cộng từ đầu đợt test (94 → 47, giảm 50%)** qua 6 lần sửa bug liên tiếp
+(3.1–3.5). Test: 2 ca thêm (`tests/test_reference_extractor.py`), tổng 15 test.
+
+**Còn lại — chưa vá, chấp nhận là giới hạn cố ý:** 4 mẫu mô tả không vét cạn mọi
+cách diễn đạt; heuristic "dấu ngoặc kép = ranh giới" không đúng 100% (câu không dùng
+ngoặc kép để đóng gói mệnh đề mô tả thì không thoát được, ở lại "trong mô tả" tới
+hết câu — đây chính là hành vi ĐÚNG cho ca `127502` nhưng có thể sai nếu 1 ngày gặp
+câu không-ngoặc-kép mà THẬT SỰ có đích hợp lệ sau mệnh đề mô tả). Khi rơi vào giới
+hạn này, LLM vẫn là lưới an toàn cuối (đồng thuận sẽ lệch → đưa người rà).
 
 ## 4. Regex — GUIDED_BY (đọc đoạn "Căn cứ...", trước "Điều 1")
 
@@ -460,19 +498,20 @@ này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng n
 - `--limit 3`: phát hiện + sửa 3 bug (mục 3.1, 3.2, 3.3 — final clause, "thay
   thế"/"bãi bỏ" ngữ cảnh, HTML tag).
 - `--limit 40`: phát hiện + sửa thêm 2 bug (mục 3.4 — fallback lẫn phần trước "Điều
-  1", động từ sớm nhất quyết định cả câu). 13 test tổng cộng khoá lại 5 bug.
-- `--limit 300` (sau sửa hết 5 bug, đã dọn dữ liệu tồn đọng trước khi đo): **300 VB
+  1", động từ sớm nhất quyết định cả câu).
+- `--limit 300` lần 1 (sau 5 bug đầu): 62 cạnh xung đột — phát hiện thêm 1 giới hạn
+  ngữ nghĩa (tiêu đề/câu dài nhiều mệnh đề mô tả).
+- Vá có giới hạn (mục 3.5 — 4 mẫu mô tả phổ biến + ranh giới ngoặc kép).
+- `--limit 300` lần 2 (sau mục 3.5, đã dọn dữ liệu tồn đọng trước khi đo): **300 VB
   · nhánh A=267/B=33/C=0 · khớp=44 · 138 VB có Action ghi thật · `(regex∪LLM)⊆metadata`
-  40/138 (29,0%) · `regex==LLM` 41/138 (29,7%) · còn 62 cạnh xung đột (giảm từ 94,
-  −34%) trên 32/138 VB (23,2%)**.
-- **Nguyên nhân xung đột còn lại** (điều tra từng ca cụ thể, không phải đoán):
-  phần lớn do `referenceType=1` (đã biết, giữ nguyên theo quyết định người dùng) +
-  1 giới hạn ngữ nghĩa MỚI của regex (mục 3.4 cuối — tiêu đề/câu dài nhiều mệnh đề
-  mô tả) mà **quyết định không vá thêm**, để đúng vai trò thiết kế: quy tắc chỉ cần
-  đủ tốt làm 1 nguồn đối chiếu, LLM tự bắt các ca này khi regex sai.
-- **Không còn bug kỹ thuật nào phát hiện được** sau 5 lần sửa trên cùng 1 vấn đề gốc
-  (regex nhầm phạm vi/vị trí trong câu). Tỷ lệ "khớp" ~15% ở cấp VB phản ánh đúng
-  thực tế dữ liệu, không phải lỗi logic còn sót.
+  42/138 (30,4%) · `regex==LLM` 42/138 (30,4%) · còn 47 cạnh xung đột (từ 94 ban đầu,
+  −50%) trên 28/138 VB (20,3%)**. 15 test tổng cộng khoá lại 6 bug (mục 3.1–3.5).
+- **Nguyên nhân xung đột còn lại:** phần lớn `referenceType=1` (đã biết, giữ nguyên
+  theo quyết định người dùng) + phần dư của giới hạn mục 3.5 (4 mẫu mô tả không vét
+  cạn hết mọi cách diễn đạt) — chấp nhận, dựa vào LLM làm lưới an toàn cuối.
+- **Không còn bug kỹ thuật nào phát hiện được** sau 6 lần sửa liên tiếp cùng 1 vấn
+  đề gốc (regex nhầm phạm vi/vị trí trong câu). Tỷ lệ "khớp" ~15% ở cấp VB phản ánh
+  đúng thực tế dữ liệu, không phải lỗi logic còn sót.
 
 **Còn cần trước khi chạy full corpus:**
 - [ ] Chốt phương án quota LLM (mục 0.1 đã cảnh báo — chi phí tăng từ ~13% VB lên
