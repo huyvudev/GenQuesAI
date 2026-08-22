@@ -460,9 +460,25 @@ Action thứ 2 khi LLM verify — SET thêm field vào Action đã có).
 
 | Flag | Ý nghĩa |
 |---|---|
-| `refs_meta_done` | đã xử lý xong nhánh A (có metadata — đối chiếu metadata+regex?+llm) |
-| `refs_regex_done` | đã xử lý xong nhánh B (không metadata, có regex — đối chiếu regex+llm) |
-| `refs_llm_done` | đã xử lý xong nhánh C (không metadata, không regex — chỉ llm) |
+| `dong_thuan_meta_done` | đã xử lý xong nhánh A (có metadata — đối chiếu metadata+regex?+llm) |
+| `dong_thuan_regex_done` | đã xử lý xong nhánh B (không metadata, có regex — đối chiếu regex+llm) |
+| `dong_thuan_llm_done` | đã xử lý xong nhánh C (không metadata, không regex — chỉ llm) |
+
+**⚠️ Bug thật đã gặp (2026-08-22, phát hiện khi chạy batch đầu tiên trên PRODUCTION):**
+bản đầu dùng tên `refs_meta_done`/`refs_regex_done`/`refs_llm_done` — **trùng chính
+xác** với tên field mà `reference_extractor.py` (v1) VÀ chính pipeline gốc của
+Chatbot-Law (`title_refs_parser.py`/`claude_refs_*`, backbone.md §23) đã dùng từ
+trước trên **7.550 VB thật, không liên quan consensus v3**. Vì trùng tên, resume
+logic coi nhầm 7.550 VB đó là "đã xong theo v3" (dù chưa từng qua consensus) — sẽ bỏ
+sót VĨNH VIỄN, ÂM THẦM, không báo lỗi gì khi chạy full corpus. Xác nhận trên
+production: `refs_llm_done=true` mà KHÔNG có Action nào mang field `nguon_llm` (dấu
+hiệu chắc chắn là flag CŨ). **Sửa:** đổi hẳn sang tiền tố `dong_thuan_*`, không trùng
+bất kỳ tên field nào hệ khác dùng. Đã migrate 300 VB batch đầu (267 nhánh A + 33
+nhánh B) từ tên cũ sang tên mới trên production — KHÔNG đụng 7.550/29.780 flag gốc.
+
+**Bài học:** khi thêm field/flag mới vào 1 graph ĐÃ CÓ dữ liệu sản xuất từ hệ khác,
+PHẢI kiểm tra tên có trùng field đã tồn tại không TRƯỚC khi chạy trên production —
+`cdi status`/`MATCH (n) WHERE n.<field>=true RETURN count(n)` là cách rẻ nhất để dò.
 
 Mỗi Norm chỉ rơi vào ĐÚNG 1 nhánh theo NGUỒN NÀO KHẢ DỤNG (A nếu có metadata dù regex
 có match hay không; B nếu không metadata nhưng regex match; C nếu cả hai đều không)
@@ -491,7 +507,8 @@ này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng n
       `source IS NULL` (dấu hiệu do `reconcile_corpus` tạo lúc `ingest`) rồi UPDATE
       field đồng thuận + `da_duyet` lên Action đó — KHÔNG tạo Action thứ 2.
 - [x] Field `nguon_metadata`/`nguon_regex`/`nguon_llm`/`mismatch`/`only_llm` trên `Action`.
-- [x] 3 flag resume riêng (`refs_meta_done`/`refs_regex_done`/`refs_llm_done`).
+- [x] 3 flag resume riêng (`dong_thuan_meta_done`/`dong_thuan_regex_done`/`dong_thuan_llm_done`
+      — đổi tên từ `refs_*` sau khi phát hiện trùng field production, xem mục 8).
 - [x] CLI: `legal_rag refs --consensus`.
 
 **Đã test trên DB thật (2026-08-22, local Neo4j, `--src most`, model `deepseek-chat`):**
@@ -557,7 +574,14 @@ online trước khi bỏ giới hạn hoàn toàn, để bắt sớm các khác 
 
 - [x] Chốt phương án quota LLM — xem mục 9.1.
 - [x] Thêm concurrency (`--workers`) — xem mục 9.1.
-- [ ] Batch vừa (`--limit`) trên SERVER ONLINE để xác nhận trước khi bỏ giới hạn.
+- [x] Batch vừa (`--limit 300 --workers 10`) trên SERVER ONLINE (production, không
+      qua local) — chạy thành công, không lỗi. Phát hiện + sửa NGAY 1 bug nghiêm
+      trọng: tên flag resume trùng field production có sẵn (7.550 VB) — xem mục 8.
+      Đã migrate 300 VB batch này sang tên flag mới, không đụng dữ liệu gốc.
 - [ ] Cân nhắc thêm bước dọn dữ liệu (`Action{source:"llm"}` cũ + reset field đồng
       thuận) nếu định chạy lại nhiều lần trong lúc còn phát triển — dữ liệu cũ chồng
       lên dữ liệu mới sẽ gây nhiễu số liệu (đã gặp thật khi test — mục 3.3 note).
+- [ ] **Chạy lại full corpus phải dùng `--no-resume` HOẶC chấp nhận bỏ qua đúng 300
+      VB đã xử lý đúng bằng tên flag mới** — 7.550 VB có `refs_llm_done` cũ giờ
+      KHÔNG còn bị coi là "đã xong" (tên flag mới không trùng), sẽ tự động được đưa
+      vào batch tiếp theo như bình thường.

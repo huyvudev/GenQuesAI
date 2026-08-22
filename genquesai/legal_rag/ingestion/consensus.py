@@ -27,6 +27,17 @@ from .reference_extractor import _norm_sh, extract_references, extract_reference
 
 Quan_He = tuple[str, str, str]   # (loai, edge, target_so_hieu)
 
+# Flag resume theo nhánh (rule.md mục 8). ĐẶT TÊN `dong_thuan_*` — KHÔNG dùng
+# `refs_llm_done`/`refs_done` (bug thật 2026-08-22): đó là tên field mà pipeline v1
+# (`reference_extractor.py::extract_corpus_references`) VÀ dữ liệu production GỐC
+# của Chatbot-Law (title_refs_parser.py/claude_refs_*, backbone.md §23) đã dùng từ
+# trước trên **7.550 VB thật** (không liên quan gì tới consensus v3) — nếu dùng
+# trùng tên, resume logic của v3 sẽ coi nhầm 7.550 VB đó là "đã xong theo v3" (dù
+# CHƯA TỪNG qua consensus) và bỏ sót vĩnh viễn, âm thầm, không báo lỗi gì. Đã xác
+# nhận trên server production: refs_llm_done=true nhưng KHÔNG Action nào có field
+# nguon_llm (dấu hiệu chắc chắn là flag CŨ, không phải v3 tạo).
+_FLAG = {"A": "dong_thuan_meta_done", "B": "dong_thuan_regex_done", "C": "dong_thuan_llm_done"}
+
 
 def extract_metadata_relations(data: dict) -> list[Quan_He]:
     """Nhánh metadata: `referenceType` trong `doc.json` -> [(loai, edge, so_hieu)].
@@ -190,7 +201,7 @@ def _xu_ly_1_vb(neo: Neo4jClient, llm_client, d: Path) -> dict | None:
     title, own = data.get("title") or "", data.get("docNum")
     text = html_to_text((d / "toanvan.html").read_text(encoding="utf-8", errors="ignore"))
     kq = resolve_relations(neo, llm_client, d.name, data, title, text, own)
-    flag = {"A": "refs_meta_done", "B": "refs_regex_done", "C": "refs_llm_done"}[kq["nhanh"]]
+    flag = _FLAG[kq["nhanh"]]
     neo.run(f"MATCH (n:Norm {{norm_id:$id}}) SET n.{flag}=true", id=d.name)
     return kq
 
@@ -211,7 +222,7 @@ def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str]
     doc_dirs = sorted({p.parent for sub in src_dirs for p in base.glob(f"{sub}/*/doc.json")})
     done: set[str] = set()
     if resume:
-        for flag in ("refs_meta_done", "refs_regex_done", "refs_llm_done"):
+        for flag in _FLAG.values():
             done |= {r["id"] for r in neo.run(f"MATCH (n:Norm) WHERE n.{flag}=true RETURN n.norm_id AS id")}
     can_xu_ly = [d for d in doc_dirs if (d / "toanvan.html").exists() and d.name not in done]
     if limit:
