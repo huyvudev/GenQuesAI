@@ -513,10 +513,51 @@ này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng n
   đề gốc (regex nhầm phạm vi/vị trí trong câu). Tỷ lệ "khớp" ~15% ở cấp VB phản ánh
   đúng thực tế dữ liệu, không phải lỗi logic còn sót.
 
-**Còn cần trước khi chạy full corpus:**
-- [ ] Chốt phương án quota LLM (mục 0.1 đã cảnh báo — chi phí tăng từ ~13% VB lên
-      ~100% VB, LLM giờ chạy trên MỌI VB không chỉ tập khó). Model `deepseek-chat`
-      dùng để test — cần xác nhận đủ quota/ngân sách cho ~36-66k lượt gọi.
+### 9.1 Quota LLM + chạy song song — chuẩn bị full corpus (2026-08-22)
+
+**Model đổi sang `deepseek-v4-flash`:** `deepseek-chat` (dùng suốt lúc test §3.1-3.5)
+đã bị deprecated (lên lịch khai tử 24/7/2026, tên chính thức hiện tại là
+`deepseek-v4-flash`/`deepseek-v4-pro`). Vẫn chạy được lúc test (chắc còn alias tương
+thích ngược) nhưng RỦI RO gãy giữa chừng 1 job chạy nhiều giờ — đã đổi hẳn trong
+`genquesai/legal_rag/.env` (không commit, chứa key thật).
+
+**Chi phí ước tính** (V4-Flash, giá 22/8/2026 — tra web, không dùng số cũ):
+| | Off-peak (~17h/ngày) | Peak (01-04h, 06-10h UTC) |
+|---|---|---|
+| Giá/1M token (in/out) | $0,22 / $0,66 | $0,44 / $1,32 |
+| Full corpus (~66.368 VB × 1 lượt) | **~$34** | **~$68** |
+
+Ước theo độ dài input trung bình quan sát được trong code (preamble+cuối ≤3300 ký
+tự nhánh A/B, ≤12.000 ký tự nhánh C) — có sai số, nên đối chiếu dashboard DeepSeek
+thật cho các lượt đã test hôm nay (~1.000 lượt) rồi nhân theo tỷ lệ thực tế.
+
+**Thời gian — ràng buộc thật, không phải tiền:** DeepSeek không công bố RPM/TPM,
+chỉ giới hạn **2500 kết nối đồng thời** cho V4-Flash. Code cũ chạy TUẦN TỰ (1
+luồng) → ~37 giờ cho full corpus. Đã thêm `workers` cho `process_corpus`/CLI
+`--workers N`.
+
+**Hiện thực song song:** `Neo4jClient.run()` tự mở session Neo4j mới mỗi lời gọi
+(driver neo4j thread-safe theo thiết kế) và `LLM` (OpenAI SDK) cũng thread-safe —
+dùng CHUNG 1 instance qua các luồng qua `ThreadPoolExecutor`, KHÔNG cần tạo
+session/client riêng mỗi luồng. `_xu_ly_1_vb()` tách riêng (hàm trần, không đụng
+state chia sẻ) để an toàn gọi song song; counts cập nhật qua `threading.Lock`.
+
+**Verify trên local (`--workers 10`, model `deepseek-v4-flash`, `--limit 30`):**
+chạy nhanh hơn hẳn tuần tự, **không có race condition** — kiểm tra 30/30 Norm chỉ có
+đúng 1 flag resume (không bị 2 luồng ghi chồng), toàn bộ field JSON (`nguon_*`) parse
+sạch không lỗi.
+
+**Quyết định người dùng (2026-08-22):** đổi model ngay + thêm concurrency + chạy full
+corpus **THẲNG trên server online** (66.368 VB thật, không qua local trước) — do đây
+là ghi vào production, nên vẫn nên chạy 1 batch vừa (`--limit`) trên chính server
+online trước khi bỏ giới hạn hoàn toàn, để bắt sớm các khác biệt dữ liệu (66k online
+đa dạng nguồn hơn 36k cục bộ — vd VB crawl từ chinhphu.gov.vn, §21 backbone.md).
+
+### 9.2 Còn cần trước khi chạy full corpus
+
+- [x] Chốt phương án quota LLM — xem mục 9.1.
+- [x] Thêm concurrency (`--workers`) — xem mục 9.1.
+- [ ] Batch vừa (`--limit`) trên SERVER ONLINE để xác nhận trước khi bỏ giới hạn.
 - [ ] Cân nhắc thêm bước dọn dữ liệu (`Action{source:"llm"}` cũ + reset field đồng
       thuận) nếu định chạy lại nhiều lần trong lúc còn phát triển — dữ liệu cũ chồng
       lên dữ liệu mới sẽ gây nhiễu số liệu (đã gặp thật khi test — mục 3.3 note).

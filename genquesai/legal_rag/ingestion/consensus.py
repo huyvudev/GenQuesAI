@@ -17,6 +17,8 @@ Phần thuần (`extract_metadata_relations`, `dong_thuan`) tách khỏi phần 
 """
 from __future__ import annotations
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ..graph.client import Neo4jClient
@@ -177,44 +179,70 @@ def resolve_relations(neo: Neo4jClient, llm_client, norm_id: str, data: dict,
     return {**kq, **ghi}
 
 
+def _xu_ly_1_vb(neo: Neo4jClient, llm_client, d: Path) -> dict | None:
+    """Xử lý 1 VB (đọc file + `resolve_relations` + set flag resume). Trả `kq` hoặc
+    `None` nếu đọc file lỗi. Hàm trần, không đụng state chia sẻ — an toàn gọi song
+    song (mỗi lời gọi 1 luồng), xem `process_corpus`."""
+    try:
+        data = json.loads((d / "doc.json").read_text(encoding="utf-8"))["data"]
+    except Exception:
+        return None
+    title, own = data.get("title") or "", data.get("docNum")
+    text = html_to_text((d / "toanvan.html").read_text(encoding="utf-8", errors="ignore"))
+    kq = resolve_relations(neo, llm_client, d.name, data, title, text, own)
+    flag = {"A": "refs_meta_done", "B": "refs_regex_done", "C": "refs_llm_done"}[kq["nhanh"]]
+    neo.run(f"MATCH (n:Norm {{norm_id:$id}}) SET n.{flag}=true", id=d.name)
+    return kq
+
+
 def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str],
-                   resume: bool = True, limit: int | None = None, log=print) -> dict:
+                   resume: bool = True, limit: int | None = None, workers: int = 1,
+                   log=print) -> dict:
     """Quét raw dirs, chạy `resolve_relations` theo luồng v3 cho từng VB. Resume qua
     3 flag riêng theo nhánh (rule.md mục 8) — mỗi VB chỉ rơi vào đúng 1 nhánh nên chỉ
-    1 flag/VB được set, nhưng kiểm tra cả 3 để coi là "đã xong". `limit`: dừng sau
-    N VB ĐÃ XỬ LÝ (bỏ qua VB không có toanvan.html/đã done không tính vào N) — dùng
-    để test nhỏ trước khi chạy full corpus (rule.md mục 9)."""
+    1 flag/VB được set, nhưng kiểm tra cả 3 để coi là "đã xong". `limit`: chỉ chọn N
+    VB đầu tiên (theo thứ tự path, sau khi lọc done/thiếu toanvan.html) — dùng để test
+    nhỏ trước khi chạy full corpus (rule.md mục 9).
+
+    `workers`: số luồng chạy song song (mặc định 1 = tuần tự, an toàn tương thích
+    ngược). `Neo4jClient.run()` tự mở session riêng mỗi lời gọi (driver neo4j
+    thread-safe) và `LLM` (OpenAI SDK) cũng thread-safe — dùng CHUNG 1 instance qua
+    các luồng, không cần tạo riêng mỗi luồng (rule.md mục 10)."""
     doc_dirs = sorted({p.parent for sub in src_dirs for p in base.glob(f"{sub}/*/doc.json")})
-    counts = {"A": 0, "B": 0, "C": 0, "khop": 0, "mismatch": 0, "only_llm": 0}
-    n_proc = 0
     done: set[str] = set()
     if resume:
         for flag in ("refs_meta_done", "refs_regex_done", "refs_llm_done"):
             done |= {r["id"] for r in neo.run(f"MATCH (n:Norm) WHERE n.{flag}=true RETURN n.norm_id AS id")}
-    for d in doc_dirs:
-        if limit and n_proc >= limit:
-            break
-        tv = d / "toanvan.html"
-        if not tv.exists() or d.name in done:
-            continue
-        try:
-            data = json.loads((d / "doc.json").read_text(encoding="utf-8"))["data"]
-        except Exception:
-            continue
-        title, own = data.get("title") or "", data.get("docNum")
-        text = html_to_text(tv.read_text(encoding="utf-8", errors="ignore"))
-        kq = resolve_relations(neo, llm_client, d.name, data, title, text, own)
-        flag = {"A": "refs_meta_done", "B": "refs_regex_done", "C": "refs_llm_done"}[kq["nhanh"]]
-        neo.run(f"MATCH (n:Norm {{norm_id:$id}}) SET n.{flag}=true", id=d.name)
-        counts[kq["nhanh"]] += 1
-        if kq["khop"] is True:
-            counts["khop"] += 1
-        elif kq["khop"] is False:
-            counts["mismatch"] += 1
-        else:
-            counts["only_llm"] += 1
-        n_proc += 1
-        if n_proc % 100 == 0:
-            log(f"  {n_proc} VB · nhánh A={counts['A']}/B={counts['B']}/C={counts['C']} · "
-                f"khớp={counts['khop']} lệch={counts['mismatch']} chỉ-LLM={counts['only_llm']}")
+    can_xu_ly = [d for d in doc_dirs if (d / "toanvan.html").exists() and d.name not in done]
+    if limit:
+        can_xu_ly = can_xu_ly[:limit]
+
+    counts = {"A": 0, "B": 0, "C": 0, "khop": 0, "mismatch": 0, "only_llm": 0}
+    n_proc = 0
+    lock = threading.Lock()
+
+    def _viec(d: Path) -> None:
+        nonlocal n_proc
+        kq = _xu_ly_1_vb(neo, llm_client, d)
+        if kq is None:
+            return
+        with lock:
+            counts[kq["nhanh"]] += 1
+            if kq["khop"] is True:
+                counts["khop"] += 1
+            elif kq["khop"] is False:
+                counts["mismatch"] += 1
+            else:
+                counts["only_llm"] += 1
+            n_proc += 1
+            if n_proc % 100 == 0:
+                log(f"  {n_proc} VB · nhánh A={counts['A']}/B={counts['B']}/C={counts['C']} · "
+                    f"khớp={counts['khop']} lệch={counts['mismatch']} chỉ-LLM={counts['only_llm']}")
+
+    if workers <= 1:
+        for d in can_xu_ly:
+            _viec(d)
+    else:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            list(pool.map(_viec, can_xu_ly))
     return {"processed": n_proc, **counts}
