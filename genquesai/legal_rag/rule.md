@@ -157,9 +157,10 @@ QĐ-UBND/NQ-HĐND mà bản cũ bị mù), chịu khoảng trắng lệch do OCR
 
 ```
 có bất kỳ từ trong nhóm SUA   → loai=SuaDoi,  cạnh=AMENDS
-  {"sửa đổi","bổ sung","điều chỉnh","thay thế","dừng thực hiện","đình chỉ thi hành"}
+  {"sửa đổi","bổ sung","điều chỉnh","dừng thực hiện","đình chỉ thi hành"}
 ngược lại, có từ trong nhóm BAIBO → loai=ThayThe, cạnh=REPLACES
   {"bãi bỏ","hủy bỏ","huỷ bỏ"}
+ngược lại, có "thay thế" (xét ngữ cảnh — mục 3.2)
 ```
 
 Ưu tiên nhóm SUA trước — tiêu đề lẫn cả hai động từ ("sửa đổi và bãi bỏ một số điều")
@@ -169,12 +170,53 @@ bảo thủ hơn khi không rõ ràng 100%.
 **⚠️ Bẫy đã biết — PHẢI tránh:** regex ngây thơ dò "có từ khoá sửa/thay + có số hiệu
 BẤT KỲ ĐÂU trong toàn văn" sẽ **nhầm câu "Căn cứ Nghị định X..." thành AMENDS** (vì
 đoạn căn cứ cũng chứa số hiệu, và VB có thể vừa "căn cứ NĐ" vừa "sửa đổi TT khác" ở
-chỗ khác). Bắt buộc: (a) chỉ đọc TIÊU ĐỀ cho REPLACES/AMENDS, không đọc toàn văn;
-(b) chỉ trích số hiệu nằm TRONG câu có động từ sửa/thay, không phải mọi số hiệu của
-văn bản.
+chỗ khác). Bắt buộc: (a) chỉ đọc TIÊU ĐỀ (+ đoạn "Hiệu lực thi hành" — mục 3.1) cho
+REPLACES/AMENDS, không đọc cả toàn văn; (b) chỉ trích số hiệu nằm TRONG CÙNG CÂU với
+động từ sửa/thay (không phải "cùng đoạn" — mục 3.1 có bẫy thứ 2, xử lý theo câu).
 
 **Loại bỏ tự trỏ:** số hiệu trùng với số hiệu của chính văn bản (`own_so_hieu`) phải
 bị loại trước khi tạo cạnh.
+
+### 3.1 Đoạn "Hiệu lực thi hành" CUỐI văn bản — nguồn thứ 2 cho REPLACES/AMENDS
+
+**Phát hiện 2026-08-22 (đo trên corpus thật, ca `58/2015/TTLT-BCT-BKHCN`):** câu
+tuyên bố thay thế/sửa đổi rất hay nằm ở **điều khoản CUỐI CÙNG** ("Điều X. Hiệu lực
+thi hành") — KHÔNG ở tiêu đề. Ca thật: tiêu đề chỉ ghi "...Quy định về quản lý chất
+lượng thép..." (không nhắc gì), nhưng ở vị trí 35.105/36.228 ký tự (gần cuối) có:
+> *"Thông tư này có hiệu lực thi hành kể từ ngày 21/3/2016 và **thay thế** Thông tư
+> liên tịch số 44/2013/TTLT-BCT-BKHCN..."*
+
+Khớp đúng `referenceType=12` (REPLACES) trong metadata thật — nếu chỉ đọc tiêu đề sẽ
+**bỏ sót 100%** loại cạnh này khi nó không được nhắc ở tiêu đề.
+
+**Quy tắc:** tìm vị trí CUỐI CÙNG (`rfind`, không phải `find`) của cụm "hiệu lực thi
+hành" hoặc "điều khoản thi hành" (không phân biệt hoa/thường); nếu không tìm thấy,
+lấy 3000 ký tự cuối văn bản làm dự phòng. Áp quy tắc động từ (mục 3) + tách SỐ HIỆU
+**theo câu** (không phải cả đoạn — xem bẫy #2 dưới) lên đoạn đó.
+
+**⚠️ Bẫy #2 (khác bẫy #1 ở trên) — PHẢI xử lý THEO TỪNG CÂU:** đoạn "Hiệu lực thi
+hành" thường có thêm câu boilerplate rất phổ biến:
+> *"Trường hợp văn bản quy phạm pháp luật được viện dẫn trong Thông tư này được sửa
+> đổi, bổ sung hoặc thay thế thì thực hiện theo văn bản mới."*
+
+Câu này nói về **CÁC VB KHÁC được trích dẫn Ở NƠI KHÁC trong văn bản** (không có số
+hiệu cụ thể ngay trong câu) — nếu quét "có động từ sửa đổi bất kỳ đâu trong ĐOẠN" sẽ
+gán nhầm động từ này cho số hiệu ở CÂU KHÁC trong cùng đoạn. Bắt buộc: tách đoạn
+thành từng câu (theo `.`/`;`), chỉ tạo cạnh khi ĐỘNG TỪ và SỐ HIỆU cùng nằm trong
+MỘT CÂU (hàm `_quan_he_theo_cau`).
+
+### 3.2 "thay thế" xét ngữ cảnh riêng — REPLACES toàn bộ vs AMENDS từng phần
+
+**Phát hiện cùng đợt 2026-08-22:** ban đầu "thay thế" bị xếp chung nhóm SUA (AMENDS)
+— sai với ca thật ở trên (metadata nói rõ đó là REPLACES, không phải AMENDS). Quy
+tắc đúng:
+- `"thay thế một số điều/khoản/điểm của X"` → **AMENDS** (chỉ thay từng phần — giữ
+  nguyên VB cũ, chỉ đổi 1 phần) — hành vi giống SUA cũ.
+- `"thay thế [Thông tư/Nghị định/...] số X"` (KHÔNG kèm "một số điều/khoản/điểm"
+  trong ~50 ký tự sau "thay thế") → **REPLACES** (thay TOÀN BỘ văn bản cũ).
+
+Bảo thủ khi có nhiều lần "thay thế" trong cùng câu/đoạn: chỉ cần **1 lần** kèm "một
+số..." là coi cả câu đó AMENDS (ưu tiên phương án ít domino hơn khi không chắc 100%).
 
 ## 4. Regex — GUIDED_BY (đọc đoạn "Căn cứ...", trước "Điều 1")
 
@@ -197,17 +239,35 @@ bắt nhầm ở đoạn này), nhưng ở v3 vẫn phải qua bước so khớp
 {"refs": [{"target": "24/2023/QH15", "loai": "ThayThe|SuaDoi|CanCu", "confidence": 0.0-1.0}]}
 ```
 
-**System prompt (nguyên văn đã validate, dùng cho cả 2 vai trò):**
-> Bạn bóc QUAN HỆ THAM CHIẾU của một văn bản pháp luật Việt Nam thành JSON:
+**System prompt (bản v2, sửa 2026-08-22 — dùng cho cả 2 vai trò):**
+> Bạn bóc TOÀN BỘ quan hệ tham chiếu của một văn bản pháp luật Việt Nam thành JSON:
 > `{"refs":[{"target":"số hiệu VB được tham chiếu (vd 24/2023/QH15)","loai":"ThayThe|SuaDoi|CanCu","confidence":0.0-1.0}]}`.
-> ThayThe = văn bản này THAY THẾ VB đích; SuaDoi = SỬA ĐỔI/BỔ SUNG; CanCu = CĂN CỨ.
+> ThayThe = văn bản này THAY THẾ TOÀN BỘ VB đích; SuaDoi = SỬA ĐỔI/BỔ SUNG (kể cả
+> "thay thế MỘT SỐ ĐIỀU/KHOẢN" — vẫn là SuaDoi, không phải ThayThe); CanCu = CĂN CỨ
+> (trích dẫn làm cơ sở pháp lý, thường ở đoạn đầu "Căn cứ...").
+> BẮT BUỘC liệt kê ĐẦY ĐỦ mọi quan hệ tìm thấy — một văn bản thường có NHIỀU CanCu
+> (mỗi dòng "Căn cứ..." là 1 CanCu riêng) CỘNG THÊM tối đa 1 ThayThe/SuaDoi nếu có.
+> KHÔNG chỉ chọn 1 quan hệ "quan trọng nhất" rồi bỏ qua các CanCu khác.
 > SỬA số hiệu bị lỗi OCR (vd 'QH1 3' → 'QH13', '24/2023/QH1' → '24/2023/QH13').
 > Chỉ lấy VB có SỐ HIỆU rõ. Không có thì `{"refs":[]}`.
 
+**⚠️ Bẫy đã gặp thật (2026-08-22, test trên `--consensus --limit 3`):** bản prompt
+v1 (chỉ nói "bóc QUAN HỆ THAM CHIẾU", không nói "liệt kê ĐẦY ĐỦ") khiến LLM **bỏ sót
+gần hết `CanCu`** — đọc đúng đoạn "Căn cứ..." có 5 dòng nhưng chỉ trả về 1 kết quả
+duy nhất (thường là `ThayThe`/`SuaDoi` — LLM tự coi đó là "quan trọng nhất" rồi bỏ
+qua phần còn lại). Không phải model yếu — thêm câu "BẮT BUỘC liệt kê ĐẦY ĐỦ... KHÔNG
+chỉ chọn 1 quan hệ quan trọng nhất" vào prompt sửa dứt điểm (verify lại: từ 1/6 quan
+hệ → đủ 6/6 trên cùng input, cùng model `deepseek-chat`).
+
 ### 5.1 Vai trò ĐỒNG THUẬN (khi có metadata và/hoặc regex — 2 hoặc 3 nguồn)
 
-**Input:** tiêu đề + đoạn preamble (≤3500 ký tự) — đủ để LLM đọc, KHÔNG cần toàn văn
-vì mục đích là ĐỘC LẬP đọc lại và cho ý kiến riêng, không phải "sửa" một nguồn khác.
+**Input:** tiêu đề + đoạn preamble (≤1800 ký tự) **+ đoạn "Hiệu lực thi hành" cuối
+văn bản (≤1500 ký tự)** — sửa 2026-08-22 cùng đợt phát hiện mục 3.1: nếu chỉ cho LLM
+xem preamble, LLM sẽ KHÔNG THỂ thấy câu thay thế ở cuối văn bản dù regex đã thấy —
+gây mismatch giả tạo (không phải LLM sai, mà không được cho xem). Chia ngân sách ký
+tự RÕ RÀNG giữa 2 đoạn (không chỉ nối rồi cắt ở 3500) để đoạn cuối không bị cắt mất
+khi preamble đã dài — xem `consensus._preamble_va_dieu_khoan_cuoi`. KHÔNG cần toàn
+văn vì mục đích là ĐỘC LẬP đọc lại và cho ý kiến riêng, không phải "sửa" nguồn khác.
 
 **So khớp:** so tập `(loai, target)` của LLM với tập của metadata (nếu có) và/hoặc
 regex (nếu có) — xem bảng đầy đủ ở mục 2. Không có "nguồn thắng" — kết quả cuối chỉ

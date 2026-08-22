@@ -1,14 +1,20 @@
 """genquesai.legal_rag.ingestion.reference_extractor — phần thuần (không Neo4j).
 
-Khoá lại 4 ca đã đối chiếu tay khi viết module (rule.md), đặc biệt ca "bẫy": tiêu đề
-chỉ NHẮC số hiệu (vd trong "Căn cứ...") mà KHÔNG có động từ sửa/thay/bãi bỏ thì KHÔNG
-được tạo AMENDS/REPLACES — đây chính là bug đã biết ở bản gốc Chatbot-Law (regex thô
-nhầm "Căn cứ Nghị định X..." thành AMENDS).
+Khoá lại các ca đã đối chiếu tay khi viết module (rule.md), đặc biệt 3 bẫy:
+1. Tiêu đề chỉ NHẮC số hiệu (vd trong "Căn cứ...") mà KHÔNG có động từ sửa/thay/bãi
+   bỏ thì KHÔNG được tạo AMENDS/REPLACES — bug đã biết ở bản gốc Chatbot-Law.
+2. (2026-08-22, ca thật 58/2015/TTLT-BCT-BKHCN) Câu tuyên bố "thay thế" thường nằm ở
+   đoạn "Hiệu lực thi hành" CUỐI văn bản, không phải tiêu đề — §3.1.
+3. (2026-08-22, cùng ca) "thay thế [VB] số X" (không kèm "một số điều") = REPLACES
+   toàn bộ, khác "sửa đổi/thay thế MỘT SỐ ĐIỀU của X" = AMENDS từng phần — §3.2. Và
+   phải xử lý THEO TỪNG CÂU — câu boilerplate ở đoạn cuối ("văn bản viện dẫn mà sửa
+   đổi... thì theo văn bản mới") không được gán nhầm cho số hiệu ở câu khác.
 """
 from __future__ import annotations
 
 from genquesai.legal_rag.ingestion.reference_extractor import (
-    extract_guided_by, extract_references, extract_title_relations,
+    extract_final_clause_relations, extract_guided_by, extract_references,
+    extract_title_relations,
 )
 
 
@@ -55,3 +61,51 @@ def test_tu_tro_bi_loai() -> None:
     assert extract_title_relations(
         "Thông tư 12/2016/TT-BTTTT sửa đổi Thông tư 12/2016/TT-BTTTT",
         "12/2016/TT-BTTTT") == []
+
+
+def test_thay_the_khong_kem_mot_so_dieu_la_replaces_toan_bo() -> None:
+    """§3.2: "thay thế [VB] số X" (không "một số điều/khoản") = thay TOÀN BỘ văn bản
+    -> REPLACES, khác hẳn "sửa đổi/thay thế một số điều" (AMENDS, §3)."""
+    assert extract_title_relations(
+        "Thông tư thay thế Thông tư số 12/2016/TT-BTTTT", "99/2024/TT-ABC"
+    ) == [("ThayThe", "REPLACES", "12/2016/TT-BTTTT")]
+
+
+def test_thay_the_mot_so_dieu_van_la_amends() -> None:
+    assert extract_title_relations(
+        "Thông tư sửa đổi, bổ sung và thay thế một số điều của Thông tư số 12/2016/TT-BTTTT",
+        "99/2024/TT-ABC"
+    ) == [("SuaDoi", "AMENDS", "12/2016/TT-BTTTT")]
+
+
+def test_final_clause_bat_duoc_cau_thay_the_o_cuoi_van_ban() -> None:
+    """§3.1, ca thật 58/2015/TTLT-BCT-BKHCN: câu tuyên bố thay thế nằm ở đoạn "Điều
+    khoản thi hành" CUỐI văn bản (tiêu đề không nhắc gì) -> vẫn phải bắt được, và
+    phân loại ĐÚNG REPLACES (khớp referenceType=12 thật trên vbpl.vn, không phải
+    AMENDS như phân loại "thay thế" thô ban đầu)."""
+    text = (
+        "Chương I QUY ĐỊNH CHUNG Điều 1. Phạm vi điều chỉnh... "
+        "Chương V ĐIỀU KHOẢN THI HÀNH Điều 21. Hiệu lực thi hành "
+        "1. Thông tư này có hiệu lực thi hành kể từ ngày 21 tháng 3 năm 2016 và thay "
+        "thế Thông tư liên tịch số 44/2013/TTLT-BCT-BKHCN ngày 31 tháng 12 năm 2013 "
+        "của Bộ Công Thương và Bộ Khoa học và Công nghệ quy định quản lý chất lượng "
+        "thép sản xuất trong nước và thép nhập khẩu."
+    )
+    rel = extract_final_clause_relations(text, "58/2015/TTLT-BCT-BKHCN")
+    assert rel == [("ThayThe", "REPLACES", "44/2013/TTLT-BCT-BKHCN")]
+
+
+def test_final_clause_boilerplate_khong_tao_canh_sai() -> None:
+    """§3.1: câu boilerplate rất phổ biến "văn bản quy phạm pháp luật được viện dẫn
+    ... được sửa đổi, bổ sung hoặc thay thế thì thực hiện theo văn bản mới" — nói về
+    CÁC VB ĐƯỢC TRÍCH DẪN Ở NƠI KHÁC (không có số hiệu cụ thể trong CÙNG CÂU) — không
+    được gán động từ "sửa đổi" của câu này cho số hiệu ở câu KHÁC trong cùng đoạn
+    (bẫy suýt xảy ra thật khi viết §3.1 — quét theo câu để tránh)."""
+    text = (
+        "Điều 21. Hiệu lực thi hành. Thông tư này có hiệu lực thi hành kể từ ngày "
+        "21 tháng 3 năm 2016 và thay thế Thông tư liên tịch số 44/2013/TTLT-BCT-BKHCN. "
+        "Trường hợp văn bản quy phạm pháp luật được viện dẫn trong Thông tư liên tịch "
+        "này được sửa đổi, bổ sung hoặc thay thế thì thực hiện theo văn bản mới."
+    )
+    rel = extract_final_clause_relations(text, "58/2015/TTLT-BCT-BKHCN")
+    assert rel == [("ThayThe", "REPLACES", "44/2013/TTLT-BCT-BKHCN")]

@@ -22,9 +22,7 @@ from pathlib import Path
 
 from ..graph.client import Neo4jClient
 from .reconcile import REL_MAP
-from .reference_extractor import (
-    _LLM_SYS, _norm_sh, extract_guided_by, extract_references_llm, extract_title_relations,
-)
+from .reference_extractor import _norm_sh, extract_references, extract_references_llm
 
 Quan_He = tuple[str, str, str]   # (loai, edge, target_so_hieu)
 
@@ -134,23 +132,43 @@ def _ghi_ket_qua_dong_thuan(neo: Neo4jClient, norm_id: str, kq: dict, source: st
     return {"nhanh": kq["nhanh"], "actions_created": n_created, "khop": kq["khop"]}
 
 
+def _preamble_va_dieu_khoan_cuoi(text: str) -> str:
+    """Đoạn "Căn cứ..." (đầu) + đoạn "Hiệu lực thi hành" (cuối) ghép lại — input cho
+    LLM ở nhánh A/B (rule.md §3.1/§5.1). PHẢI cho LLM thấy CẢ đoạn cuối, không chỉ
+    preamble — nếu không LLM sẽ thiếu đúng những gì regex thiếu (không phải vì LLM
+    sai, mà vì không được cho xem), khiến so sánh mismatch giả tạo.
+
+    Chia ngân sách ký tự RÕ RÀNG (preamble ≤1800, đoạn cuối ≤1500) vì
+    `extract_references_llm` cắt CHUỖI TỔNG ở 3500 ký tự — nếu không chia trước, đoạn
+    cuối (thường quan trọng hơn cho REPLACES/AMENDS) dễ bị cắt mất khi preamble đã dài."""
+    text_n = _norm_sh(text)
+    low = text_n.lower()
+    i = text_n.find("Điều 1")
+    preamble = (text_n[:i] if i > 0 else text_n[:1800])[:1800]
+    j = low.rfind("hiệu lực thi hành")
+    if j < 0:
+        j = low.rfind("điều khoản thi hành")
+    dieu_khoan_cuoi = (text_n[j:] if j >= 0 else text_n[-1500:])[:1500]
+    return (f"[PHẦN ĐẦU — căn cứ]\n{preamble}\n\n"
+            f"[PHẦN CUỐI — hiệu lực thi hành, thường ghi rõ thay thế/sửa đổi VB nào]\n{dieu_khoan_cuoi}")
+
+
 def resolve_relations(neo: Neo4jClient, llm_client, norm_id: str, data: dict,
                       title: str, text: str, own_so_hieu: str | None) -> dict:
     """Xử lý 1 VB theo luồng v3 (rule.md mục 0.1): xác định nhánh A/B/C, gọi LLM đúng
     input theo nhánh, đối chiếu, ghi kết quả. `llm_client` bắt buộc (khác
     `reference_extractor.extract_corpus_references` — ở đây LLM LUÔN chạy)."""
     meta = extract_metadata_relations(data)
-    regex = extract_title_relations(title, own_so_hieu) + extract_guided_by(
-        text, own_so_hieu, exclude={s for _, _, s in extract_title_relations(title, own_so_hieu)})
+    regex = extract_references(title, text, own_so_hieu)
 
     meta_arg = meta if meta else None
     regex_arg = regex if regex else None
 
     if meta_arg is not None or regex_arg is not None:
-        # Nhánh A/B — LLM chỉ cần tiêu đề + preamble (mục 5.1), có nguồn khác để đối chiếu.
-        i = _norm_sh(text).find("Điều 1")
-        preamble = _norm_sh(text)[:i] if i > 0 else _norm_sh(text)[:3500]
-        llm_refs = extract_references_llm(llm_client, title, preamble, own_so_hieu)
+        # Nhánh A/B — LLM đọc preamble + đoạn hiệu lực thi hành (mục 5.1), có nguồn
+        # khác để đối chiếu — KHÔNG chỉ preamble (mục 3.1: câu thay/sửa hay ở cuối văn bản).
+        llm_input = _preamble_va_dieu_khoan_cuoi(text)
+        llm_refs = extract_references_llm(llm_client, title, llm_input, own_so_hieu)
     else:
         # Nhánh C — LLM là nguồn duy nhất, đọc TOÀN VĂN (mục 5.2), không giới hạn preamble.
         llm_refs = extract_references_llm(llm_client, title, _norm_sh(text)[:12000], own_so_hieu)
@@ -161,10 +179,12 @@ def resolve_relations(neo: Neo4jClient, llm_client, norm_id: str, data: dict,
 
 
 def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str],
-                   resume: bool = True, log=print) -> dict:
+                   resume: bool = True, limit: int | None = None, log=print) -> dict:
     """Quét raw dirs, chạy `resolve_relations` theo luồng v3 cho từng VB. Resume qua
     3 flag riêng theo nhánh (rule.md mục 8) — mỗi VB chỉ rơi vào đúng 1 nhánh nên chỉ
-    1 flag/VB được set, nhưng kiểm tra cả 3 để coi là "đã xong"."""
+    1 flag/VB được set, nhưng kiểm tra cả 3 để coi là "đã xong". `limit`: dừng sau
+    N VB ĐÃ XỬ LÝ (bỏ qua VB không có toanvan.html/đã done không tính vào N) — dùng
+    để test nhỏ trước khi chạy full corpus (rule.md mục 9)."""
     doc_dirs = sorted({p.parent for sub in src_dirs for p in base.glob(f"{sub}/*/doc.json")})
     counts = {"A": 0, "B": 0, "C": 0, "khop": 0, "mismatch": 0, "only_llm": 0}
     n_proc = 0
@@ -173,6 +193,8 @@ def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str]
         for flag in ("refs_meta_done", "refs_regex_done", "refs_llm_done"):
             done |= {r["id"] for r in neo.run(f"MATCH (n:Norm) WHERE n.{flag}=true RETURN n.norm_id AS id")}
     for d in doc_dirs:
+        if limit and n_proc >= limit:
+            break
         tv = d / "toanvan.html"
         if not tv.exists() or d.name in done:
             continue

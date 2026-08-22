@@ -42,4 +42,5 @@ tests/golden/fixture/*
 # .env của genquesai/legal_rag/ (mật khẩu Neo4j/Qdrant/LLM riêng từng máy) — mẫu ở
 # genquesai/legal_rag/.env.example
 /genquesai/legal_rag/.env
-/genquesai/legal_rag/.env.*.bak
+/genquesai/legal_rag/.env.*
+!/genquesai/legal_rag/.env.example

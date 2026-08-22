@@ -149,7 +149,7 @@ def cmd_refs(args) -> int:
         llm = LLM(settings=s)
         with Neo4jClient(s) as c:
             c.verify()
-            res = process_corpus(c, llm, base, srcs, resume=not args.no_resume)
+            res = process_corpus(c, llm, base, srcs, resume=not args.no_resume, limit=args.limit)
         print(f"✓ refs --consensus xong: {res['processed']} VB · "
               f"nhánh A={res['A']}/B={res['B']}/C={res['C']} · "
               f"khớp={res['khop']} · lệch={res['mismatch']} (cần rà) · "
@@ -343,6 +343,7 @@ def main(argv=None) -> int:
     pr.add_argument("--no-resume", action="store_true", dest="no_resume",
                     help="xử lý lại cả VB đã có flag refs_*_done (mặc định bỏ qua)")
     pr.add_argument("--pace", type=float, default=0.0, help="giây nghỉ giữa các lượt LLM (chỉ áp dụng khi KHÔNG --consensus)")
+    pr.add_argument("--limit", type=int, default=None, help="chỉ xử lý N VB đầu tiên (test nhỏ trước khi chạy full corpus)")
     pr.set_defaults(func=cmd_refs)
 
     # CDI — Continuous Document Integration (backbone.md §9)

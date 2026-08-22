@@ -1,8 +1,11 @@
 """Reference Extractor — bóc quan hệ Căn cứ/Sửa đổi/Thay thế từ TEXT (regex nền + LLM
 tuỳ chọn). Quy tắc đầy đủ + lý do: xem `../rule.md`. Tóm tắt:
 
-- REPLACES/AMENDS: chỉ đọc TIÊU ĐỀ, neo theo ĐỘNG TỪ (không neo theo "có số hiệu ở
-  đâu đó" trong toàn văn — bẫy đã biết: nhầm câu "Căn cứ Nghị định X..." thành AMENDS).
+- REPLACES/AMENDS: đọc TIÊU ĐỀ + đoạn "Hiệu lực thi hành"/"Điều khoản thi hành" CUỐI
+  văn bản (§3.1 — câu tuyên bố thay thế/sửa đổi rất hay nằm ở đây, không phải tiêu
+  đề, vd "Thông tư này có hiệu lực... và thay thế Thông tư số X..."). Cả hai đều neo
+  theo ĐỘNG TỪ (không neo theo "có số hiệu ở đâu đó" trong toàn văn — bẫy đã biết:
+  nhầm câu "Căn cứ Nghị định X..." thành AMENDS).
 - GUIDED_BY: đọc đoạn "Căn cứ..." (preamble, trước "Điều 1").
 - REPLACES/AMENDS -> da_duyet=false (qua người duyệt, ảnh hưởng domino hiệu lực).
   GUIDED_BY -> da_duyet=true (rủi ro thấp, không đổi hiệu lực ai).
@@ -25,10 +28,18 @@ from ..graph.client import Neo4jClient
 # khoảng trắng lệch do OCR quanh dấu '/'.
 SOHIEU_RE = re.compile(r"\d+\s*/\s*\d{4}\s*/\s*[A-ZĐ0-9]+(?:-[A-ZĐ0-9]+)*", re.IGNORECASE)
 
-# Neo theo ĐỘNG TỪ (rule.md §3) — SUA xét trước BAIBO khi tiêu đề lẫn cả hai (bảo thủ
-# hơn: coi là sửa từng phần thay vì thay thế toàn bộ).
-SUA = ("sửa đổi", "bổ sung", "điều chỉnh", "thay thế", "dừng thực hiện", "đình chỉ thi hành")
+# Neo theo ĐỘNG TỪ (rule.md §3) — SUA xét trước BAIBO khi lẫn cả hai (bảo thủ hơn:
+# coi là sửa từng phần thay vì thay thế toàn bộ).
+#
+# "thay thế" TÁCH RIÊNG khỏi SUA (rule.md §3.2, phát hiện 2026-08-22 — ca thật
+# 58/2015/TTLT-BCT-BKHCN): "thay thế một số điều/khoản/điểm của X" = sửa từng phần
+# (AMENDS, đúng như SUA cũ), nhưng "thay thế [Thông tư/Nghị định] số X" (không kèm
+# "một số...") = thay TOÀN BỘ văn bản (REPLACES) — đo trên corpus thật, metadata
+# referenceType=12 (REPLACES) khớp đúng dạng câu không-kèm-"một số" này.
+SUA = ("sửa đổi", "bổ sung", "điều chỉnh", "dừng thực hiện", "đình chỉ thi hành")
 BAIBO = ("bãi bỏ", "hủy bỏ", "huỷ bỏ")
+_MOT_SO_DIEU = re.compile(r"một\s+số\s+(điều|khoản|điểm)", re.IGNORECASE)
+_THAY_THE = re.compile(r"thay\s+thế", re.IGNORECASE)
 
 
 def _norm_sh(s: str) -> str:
@@ -39,21 +50,71 @@ def _sohieu_in(s: str) -> list[str]:
     return list(dict.fromkeys(_norm_sh(x) for x in SOHIEU_RE.findall(_norm_sh(s))))
 
 
-def extract_title_relations(title: str, own_so_hieu: str | None = None) -> list[tuple[str, str, str]]:
-    """REPLACES/AMENDS từ TIÊU ĐỀ — neo theo động từ (rule.md §3). Trả [(loai, edge, target)]."""
-    title = title or ""
-    low = title.lower()
-    own = _norm_sh(own_so_hieu) if own_so_hieu else None
-    shs = [s for s in _sohieu_in(title) if s and s != own]
-    if not shs:
-        return []
+def _phan_loai_dong_tu(low: str) -> tuple[str, str] | None:
+    """Phân loại REPLACES/AMENDS theo động từ (rule.md §3, §3.2). `low` = text đã
+    lowercase. Trả (loai, edge) hoặc None nếu không có động từ nào khớp.
+
+    "thay thế" xét ngữ cảnh riêng: mọi lần xuất hiện đều KHÔNG kèm "một số
+    điều/khoản/điểm" trong ~50 ký tự sau đó -> REPLACES (thay nguyên văn bản).
+    CÓ dù chỉ 1 lần kèm "một số..." -> AMENDS (bảo thủ, giống quy tắc SUA/BAIBO)."""
     if any(k in low for k in SUA):
-        loai, edge = "SuaDoi", "AMENDS"
-    elif any(k in low for k in BAIBO):
-        loai, edge = "ThayThe", "REPLACES"
-    else:
-        return []
-    return [(loai, edge, s) for s in shs]
+        return "SuaDoi", "AMENDS"
+    if any(k in low for k in BAIBO):
+        return "ThayThe", "REPLACES"
+    matches = list(_THAY_THE.finditer(low))
+    if matches:
+        for m in matches:
+            if _MOT_SO_DIEU.search(low[m.end():m.end() + 50]):
+                return "SuaDoi", "AMENDS"
+        return "ThayThe", "REPLACES"
+    return None
+
+
+def _quan_he_theo_cau(doan: str, own_so_hieu: str | None = None,
+                      exclude: set[str] | None = None) -> list[tuple[str, str, str]]:
+    """Tách `doan` thành từng CÂU (theo dấu . hoặc ;), phân loại + trích số hiệu
+    RIÊNG cho từng câu — KHÔNG gộp động từ của câu này với số hiệu của câu khác
+    (rule.md §3.1, phát hiện 2026-08-22: câu boilerplate "văn bản viện dẫn được sửa
+    đổi... thì theo văn bản mới" không nói về số hiệu cụ thể nào, nếu quét cả đoạn
+    thì động từ "sửa đổi" ở câu đó bị gán nhầm cho số hiệu ở câu KHÁC)."""
+    own = _norm_sh(own_so_hieu) if own_so_hieu else None
+    used = set(exclude or set())
+    if own:
+        used.add(own)
+    out: list[tuple[str, str, str]] = []
+    for cau in re.split(r"(?<=[.;])\s+", doan):
+        shs = [s for s in _sohieu_in(cau) if s and s not in used]
+        if not shs:
+            continue
+        kq = _phan_loai_dong_tu(cau.lower())
+        if kq is None:
+            continue
+        loai, edge = kq
+        for sh in shs:
+            out.append((loai, edge, sh))
+            used.add(sh)
+    return out
+
+
+def extract_title_relations(title: str, own_so_hieu: str | None = None) -> list[tuple[str, str, str]]:
+    """REPLACES/AMENDS từ TIÊU ĐỀ — neo theo động từ, theo từng câu (rule.md §3)."""
+    return _quan_he_theo_cau(title or "", own_so_hieu)
+
+
+def extract_final_clause_relations(text: str, own_so_hieu: str | None = None,
+                                   exclude: set[str] | None = None) -> list[tuple[str, str, str]]:
+    """REPLACES/AMENDS từ đoạn 'Hiệu lực thi hành'/'Điều khoản thi hành' — thường ở
+    CUỐI văn bản (rule.md §3.1, phát hiện 2026-08-22). Câu tuyên bố thay thế/sửa đổi
+    hay nằm ở đây, KHÔNG ở tiêu đề — vd 'Thông tư này có hiệu lực... và thay thế
+    Thông tư liên tịch số 44/2013/TTLT-BCT-BKHCN...' (ca thật, đo trên corpus).
+    Xử lý theo TỪNG CÂU (không phải cả đoạn) — xem `_quan_he_theo_cau`."""
+    text_n = _norm_sh(text)
+    low = text_n.lower()
+    i = low.rfind("hiệu lực thi hành")
+    if i < 0:
+        i = low.rfind("điều khoản thi hành")
+    clause = text_n[i:] if i >= 0 else text_n[-3000:]
+    return _quan_he_theo_cau(clause, own_so_hieu, exclude)
 
 
 def extract_guided_by(text: str, own_so_hieu: str | None = None,
@@ -75,18 +136,25 @@ def extract_guided_by(text: str, own_so_hieu: str | None = None,
 
 
 def extract_references(title: str, text: str, own_so_hieu: str | None = None) -> list[tuple[str, str, str]]:
-    """Pure: hợp REPLACES/AMENDS (tiêu đề) + GUIDED_BY (preamble). Không DB, test thẳng được."""
+    """Pure: hợp REPLACES/AMENDS (tiêu đề + đoạn 'Hiệu lực thi hành' cuối văn bản) +
+    GUIDED_BY (preamble). Không DB, test thẳng được."""
     rel = extract_title_relations(title, own_so_hieu)
+    rel += extract_final_clause_relations(text, own_so_hieu, exclude={s for _, _, s in rel})
     guided = extract_guided_by(text, own_so_hieu, exclude={s for _, _, s in rel})
     return rel + guided
 
 
 _EDGE_MAP = {"ThayThe": "REPLACES", "SuaDoi": "AMENDS", "CanCu": "GUIDED_BY"}
 _LLM_SYS = (
-    "Bạn bóc QUAN HỆ THAM CHIẾU của một văn bản pháp luật Việt Nam thành JSON: "
+    "Bạn bóc TOÀN BỘ quan hệ tham chiếu của một văn bản pháp luật Việt Nam thành JSON: "
     "{\"refs\":[{\"target\":\"số hiệu VB được tham chiếu (vd 24/2023/QH15)\", "
     "\"loai\":\"ThayThe|SuaDoi|CanCu\", \"confidence\":0.0-1.0}]}. "
-    "ThayThe = văn bản này THAY THẾ VB đích; SuaDoi = SỬA ĐỔI/BỔ SUNG; CanCu = CĂN CỨ. "
+    "ThayThe = văn bản này THAY THẾ TOÀN BỘ VB đích; SuaDoi = SỬA ĐỔI/BỔ SUNG (kể cả "
+    "'thay thế MỘT SỐ ĐIỀU/KHOẢN' — vẫn là SuaDoi, không phải ThayThe); CanCu = CĂN CỨ "
+    "(trích dẫn làm cơ sở pháp lý, thường ở đoạn đầu 'Căn cứ...'). "
+    "BẮT BUỘC liệt kê ĐẦY ĐỦ mọi quan hệ tìm thấy — một văn bản thường có NHIỀU CanCu "
+    "(mỗi dòng 'Căn cứ...' là 1 CanCu riêng) CỘNG THÊM tối đa 1 ThayThe/SuaDoi nếu có. "
+    "KHÔNG chỉ chọn 1 quan hệ 'quan trọng nhất' rồi bỏ qua các CanCu khác. "
     "SỬA số hiệu bị lỗi OCR (vd 'QH1 3' → 'QH13', '24/2023/QH1' → '24/2023/QH13'). "
     "Chỉ lấy VB có SỐ HIỆU rõ. Không có thì {\"refs\":[]}."
 )
