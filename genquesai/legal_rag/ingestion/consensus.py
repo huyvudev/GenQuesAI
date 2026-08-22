@@ -17,12 +17,11 @@ Phần thuần (`extract_metadata_relations`, `dong_thuan`) tách khỏi phần 
 """
 from __future__ import annotations
 import json
-import re
 from pathlib import Path
 
 from ..graph.client import Neo4jClient
 from .reconcile import REL_MAP
-from .reference_extractor import _norm_sh, extract_references, extract_references_llm
+from .reference_extractor import _norm_sh, extract_references, extract_references_llm, html_to_text
 
 Quan_He = tuple[str, str, str]   # (loai, edge, target_so_hieu)
 
@@ -203,7 +202,7 @@ def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str]
         except Exception:
             continue
         title, own = data.get("title") or "", data.get("docNum")
-        text = re.sub(r"<[^>]+>", " ", tv.read_text(encoding="utf-8", errors="ignore"))
+        text = html_to_text(tv.read_text(encoding="utf-8", errors="ignore"))
         kq = resolve_relations(neo, llm_client, d.name, data, title, text, own)
         flag = {"A": "refs_meta_done", "B": "refs_regex_done", "C": "refs_llm_done"}[kq["nhanh"]]
         neo.run(f"MATCH (n:Norm {{norm_id:$id}}) SET n.{flag}=true", id=d.name)

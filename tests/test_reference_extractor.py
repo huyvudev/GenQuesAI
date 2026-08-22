@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from genquesai.legal_rag.ingestion.reference_extractor import (
     extract_final_clause_relations, extract_guided_by, extract_references,
-    extract_title_relations,
+    extract_title_relations, html_to_text,
 )
 
 
@@ -109,3 +109,37 @@ def test_final_clause_boilerplate_khong_tao_canh_sai() -> None:
     )
     rel = extract_final_clause_relations(text, "58/2015/TTLT-BCT-BKHCN")
     assert rel == [("ThayThe", "REPLACES", "44/2013/TTLT-BCT-BKHCN")]
+
+
+def test_bai_bo_noi_dung_tai_vb_khac_la_amends_khong_phai_replaces() -> None:
+    """§3.2 mở rộng (ca thật 06/2016/TT-BKHCN, 2026-08-22): "bãi bỏ NỘI DUNG quy định
+    liên quan đến... quy định TẠI Quyết định số X" = chỉ bãi bỏ 1 PHẦN NỘI DUNG nằm
+    TRONG VB khác (không phải toàn bộ VB đó) -> AMENDS, khớp referenceType=1 + LLM.
+    Quy tắc "bãi bỏ = luôn REPLACES" ban đầu (mục 3) là SAI cho ca này."""
+    text = (
+        "Điều X. Hiệu lực thi hành. Thông tư này có hiệu lực thi hành kể từ ngày 20 "
+        "tháng 6 năm 2016 và bãi bỏ nội dung quy định liên quan đến cấp giấy phép "
+        "dịch vụ an toàn bức xạ quy định tại Quyết định số 32/2007/QĐ-BKHCN ngày 31 "
+        "tháng 12 năm 2007 của Bộ trưởng Bộ Khoa học và Công nghệ."
+    )
+    rel = extract_final_clause_relations(text, "06/2016/TT-BKHCN")
+    assert rel == [("SuaDoi", "AMENDS", "32/2007/QĐ-BKHCN")]
+
+
+def test_bai_bo_toan_bo_van_la_replaces() -> None:
+    """Đối chứng: "bãi bỏ [toàn bộ] Quyết định số X" (không "nội dung"/"một số điều")
+    vẫn phải là REPLACES như quy tắc gốc — chỉ câu có cụm từng-phần mới đổi AMENDS."""
+    rel = extract_title_relations(
+        "Quyết định bãi bỏ Chỉ thị số 05/2010/CT-BGDDT", "10/2024/QD-BGDDT")
+    assert rel == [("ThayThe", "REPLACES", "05/2010/CT-BGDDT")]
+
+
+def test_html_to_text_giu_lien_mach_so_hieu_bi_tag_chen_giua() -> None:
+    """Bug thật 2026-08-22 (VB 113783/most): HTML gốc tô đậm/nghiêng riêng TỪNG KÝ TỰ
+    của số hiệu (vd do OCR/export PDF), <em> chèn giữa "QH" và "13". Dùng
+    `re.sub(r"<[^>]+>", " ", html)` (bản cũ) làm số hiệu vỡ thành "QH 1 3" -> SOHIEU_RE
+    chỉ bắt được "QH", mất "13". `html_to_text` (HTMLParser, không separator) phải
+    giữ liền mạch."""
+    html = "<p>Căn cứ Luật số 29/2013/QH<em>1</em><em>3</em> ngày 18 tháng 6 năm 2013;</p>"
+    text = html_to_text(html)
+    assert "29/2013/QH13" in text

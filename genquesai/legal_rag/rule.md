@@ -205,18 +205,44 @@ gán nhầm động từ này cho số hiệu ở CÂU KHÁC trong cùng đoạn
 thành từng câu (theo `.`/`;`), chỉ tạo cạnh khi ĐỘNG TỪ và SỐ HIỆU cùng nằm trong
 MỘT CÂU (hàm `_quan_he_theo_cau`).
 
-### 3.2 "thay thế" xét ngữ cảnh riêng — REPLACES toàn bộ vs AMENDS từng phần
+### 3.2 "thay thế"/"bãi bỏ" xét ngữ cảnh riêng — REPLACES toàn bộ vs AMENDS từng phần
 
-**Phát hiện cùng đợt 2026-08-22:** ban đầu "thay thế" bị xếp chung nhóm SUA (AMENDS)
-— sai với ca thật ở trên (metadata nói rõ đó là REPLACES, không phải AMENDS). Quy
-tắc đúng:
-- `"thay thế một số điều/khoản/điểm của X"` → **AMENDS** (chỉ thay từng phần — giữ
-  nguyên VB cũ, chỉ đổi 1 phần) — hành vi giống SUA cũ.
-- `"thay thế [Thông tư/Nghị định/...] số X"` (KHÔNG kèm "một số điều/khoản/điểm"
-  trong ~50 ký tự sau "thay thế") → **REPLACES** (thay TOÀN BỘ văn bản cũ).
+**Phát hiện đợt 2026-08-22 (2 ca thật):**
+- `58/2015/TTLT-BCT-BKHCN`: ban đầu "thay thế" bị xếp chung nhóm SUA (AMENDS) — sai,
+  metadata (`referenceType=12`) nói rõ đó là REPLACES.
+- `06/2016/TT-BKHCN`: *"bãi bỏ **nội dung** quy định liên quan đến... quy định
+  **tại** Quyết định số 32/2007/QĐ-BKHCN"* — ban đầu "bãi bỏ" luôn = REPLACES là sai,
+  câu này chỉ bãi bỏ 1 PHẦN NỘI DUNG nằm trong VB khác, không phải toàn bộ VB đó.
 
-Bảo thủ khi có nhiều lần "thay thế" trong cùng câu/đoạn: chỉ cần **1 lần** kèm "một
-số..." là coi cả câu đó AMENDS (ưu tiên phương án ít domino hơn khi không chắc 100%).
+Quy tắc đúng, áp dụng CHUNG cho cả "thay thế" và "bãi bỏ/hủy bỏ" (`_phan_loai_dong_tu`):
+- Đi kèm cụm chỉ TỪNG PHẦN (`_TUNG_PHAN`: "một số điều/khoản/điểm", "nội dung", "quy
+  định liên quan") trong ~60 ký tự sau động từ → **AMENDS** (sửa/bãi 1 phần, giữ
+  nguyên phần còn lại của VB đích).
+- KHÔNG kèm cụm nào ở trên → **REPLACES** (nhắm thẳng, thay/bãi TOÀN BỘ VB đích).
+
+Bảo thủ trên TOÀN CÂU (không phân biệt "thay thế" hay "bãi bỏ" nào match trước): chỉ
+cần **1 lần** bất kỳ động từ nào kèm cụm từng-phần là coi cả câu đó AMENDS.
+
+**Giới hạn đã biết (không phải bug, là mơ hồ ngôn ngữ pháp lý thật):** ca `06/2016`
+ở trên — quy tắc tất định cho AMENDS, nhưng LLM (đọc CÙNG đoạn) tự phân loại
+REPLACES. Đây là ví dụ ĐÚNG CHỨC NĂNG của thiết kế đồng thuận (mục 0.1/2): khi 2
+nguồn độc lập bất đồng về 1 câu mơ hồ thật, hệ thống PHẢI gắn cờ đưa người rà, không
+nên cố thêm quy tắc để ép 2 nguồn "khớp" nhân tạo.
+
+### 3.3 HTML → text: dùng `html_to_text` (selectolax), KHÔNG regex thay tag bằng khoảng trắng
+
+**Bug thật 2026-08-22** (VB `113783/most`): HTML gốc tô đậm/nghiêng RIÊNG TỪNG KÝ TỰ
+của số hiệu (do OCR/export PDF), vd `"...QH</em><em>1</em><em>3..."`. Cách cũ
+(`re.sub(r"<[^>]+>", " ", html)`) thay MỌI tag bằng khoảng trắng → `"QH13"` vỡ thành
+`"QH 1 3"` → `SOHIEU_RE` chỉ bắt được `"QH"`, MẤT `"13"` — lỗi âm thầm, không crash,
+chỉ lặng lẽ thiếu số hiệu.
+
+**Sửa:** `html_to_text()` dùng `selectolax.parser.HTMLParser(html).text()` — **KHÔNG
+truyền `separator`** (mặc định nối liền text-node theo DOM, không tự thêm khoảng
+trắng) — giữ đúng `"QH13"` liền mạch. Đã kiểm tra: KHÔNG gây dính chữ giữa các `<p>`
+trên dữ liệu thật (HTML nguồn format có xuống dòng thật giữa đoạn, không phải HTML
+minify) — nếu đổi nguồn dữ liệu khác (HTML minify, không xuống dòng) thì giả định
+này có thể sai, cần kiểm tra lại.
 
 ## 4. Regex — GUIDED_BY (đọc đoạn "Căn cứ...", trước "Điều 1")
 
@@ -382,10 +408,25 @@ này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng n
 - [x] 3 flag resume riêng (`refs_meta_done`/`refs_regex_done`/`refs_llm_done`).
 - [x] CLI: `legal_rag refs --consensus`.
 
-**Còn lại — chưa test được với DB thật (cần Neo4j sống), rủi ro cần biết trước khi chạy:**
-- [ ] `resolve_relations`/`process_corpus` mới verify được ĐƯỜNG PURE (`dong_thuan`,
-      `extract_metadata_relations`) qua test; phần chạm Cypher (`_ghi_ket_qua_dong_thuan`,
-      `_FIND_META_ACTIONS`) CHƯA chạy thử trên DB thật — nên chạy `--limit`/dry-run nhỏ
-      trước khi full corpus.
-- [ ] **Trước khi chạy full corpus:** chốt phương án quota LLM (mục 0.1 đã cảnh báo —
-      chi phí tăng từ ~13% VB lên ~100% VB, LLM giờ chạy trên MỌI VB không chỉ tập khó).
+**Đã test trên DB thật (2026-08-22, local Neo4j, `--src most`, model `deepseek-chat`):**
+- `--limit 3`: phát hiện + sửa 3 bug (mục 3.1, 3.2, 3.3 — final clause, "thay
+  thế"/"bãi bỏ" ngữ cảnh, HTML tag). Thêm 9 test khoá lại.
+- `--limit 40` (sau khi dọn dữ liệu tồn đọng từ các lần test trước — xoá
+  `Action{source:"llm"}` + reset field đồng thuận + reset 3 flag resume, chỉ trên
+  local test DB): **40 VB · nhánh A=35/B=5/C=0 · khớp=6 · 15 VB thực sự có Action ghi
+  (target tồn tại trong graph) · trong đó `(regex∪LLM)` là tập con đúng của metadata
+  4/15 · `regex==LLM` 3/15 · còn 11 xung đột loại cạnh**, phần lớn (9/11, VB
+  `113783`) do `referenceType=1` (đã biết, giữ nguyên theo quyết định người dùng),
+  còn lại (`110816`, `12041`) là ca văn bản mơ hồ thật — LLM và regex tự bất đồng,
+  **đúng chức năng thiết kế** (đưa người rà, không phải bug).
+- **Không còn phát hiện bug kỹ thuật nào** sau đợt sửa 3 bug trên. Tỷ lệ "khớp" thấp
+  (6/40 ≈ 15%) phản ánh đúng thực tế dữ liệu (nhiều VB `most` có referenceType=1
+  rải rác + độ mơ hồ ngôn ngữ pháp lý thật), không phải lỗi logic.
+
+**Còn cần trước khi chạy full corpus:**
+- [ ] Chốt phương án quota LLM (mục 0.1 đã cảnh báo — chi phí tăng từ ~13% VB lên
+      ~100% VB, LLM giờ chạy trên MỌI VB không chỉ tập khó). Model `deepseek-chat`
+      dùng để test — cần xác nhận đủ quota/ngân sách cho ~36-66k lượt gọi.
+- [ ] Cân nhắc thêm bước dọn dữ liệu (`Action{source:"llm"}` cũ + reset field đồng
+      thuận) nếu định chạy lại nhiều lần trong lúc còn phát triển — dữ liệu cũ chồng
+      lên dữ liệu mới sẽ gây nhiễu số liệu (đã gặp thật khi test — mục 3.3 note).

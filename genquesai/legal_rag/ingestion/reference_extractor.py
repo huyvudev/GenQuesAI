@@ -22,24 +22,46 @@ import re
 import time
 from pathlib import Path
 
+from selectolax.parser import HTMLParser
+
 from ..graph.client import Neo4jClient
 
 # Số hiệu VBQPPL tổng quát — bắt MỌI loại (kể cả QĐ-UBND/NQ-HĐND cấp tỉnh), chịu
 # khoảng trắng lệch do OCR quanh dấu '/'.
 SOHIEU_RE = re.compile(r"\d+\s*/\s*\d{4}\s*/\s*[A-ZĐ0-9]+(?:-[A-ZĐ0-9]+)*", re.IGNORECASE)
 
-# Neo theo ĐỘNG TỪ (rule.md §3) — SUA xét trước BAIBO khi lẫn cả hai (bảo thủ hơn:
-# coi là sửa từng phần thay vì thay thế toàn bộ).
+# Neo theo ĐỘNG TỪ (rule.md §3) — SUA xét trước BAIBO/"thay thế" khi lẫn cả hai
+# (bảo thủ hơn: coi là sửa từng phần thay vì thay thế toàn bộ).
 #
-# "thay thế" TÁCH RIÊNG khỏi SUA (rule.md §3.2, phát hiện 2026-08-22 — ca thật
-# 58/2015/TTLT-BCT-BKHCN): "thay thế một số điều/khoản/điểm của X" = sửa từng phần
-# (AMENDS, đúng như SUA cũ), nhưng "thay thế [Thông tư/Nghị định] số X" (không kèm
-# "một số...") = thay TOÀN BỘ văn bản (REPLACES) — đo trên corpus thật, metadata
-# referenceType=12 (REPLACES) khớp đúng dạng câu không-kèm-"một số" này.
+# "thay thế" và "bãi bỏ/hủy bỏ" TÁCH RIÊNG khỏi SUA, xét NGỮ CẢNH (rule.md §3.2,
+# phát hiện 2026-08-22 — 2 ca thật):
+#   - 58/2015/TTLT-BCT-BKHCN: "thay thế Thông tư số X" (không "một số điều") = thay
+#     TOÀN BỘ -> REPLACES, khớp referenceType=12 thật.
+#   - 06/2016/TT-BKHCN: "bãi bỏ NỘI DUNG quy định liên quan đến... quy định TẠI
+#     Quyết định số 32/2007/QĐ-BKHCN" = chỉ bãi bỏ 1 PHẦN NỘI DUNG nằm TRONG VB khác
+#     (không phải toàn bộ VB đó) -> AMENDS, khớp referenceType=1 + LLM (không phải
+#     REPLACES như quy tắc "bãi bỏ = luôn REPLACES" ngây thơ ban đầu).
+# Cả hai đều dùng chung 1 luật: đi kèm cụm chỉ TỪNG PHẦN (_TUNG_PHAN) trong ~60 ký
+# tự sau động từ -> AMENDS; không kèm -> REPLACES (nhắm thẳng toàn bộ văn bản đích).
 SUA = ("sửa đổi", "bổ sung", "điều chỉnh", "dừng thực hiện", "đình chỉ thi hành")
-BAIBO = ("bãi bỏ", "hủy bỏ", "huỷ bỏ")
-_MOT_SO_DIEU = re.compile(r"một\s+số\s+(điều|khoản|điểm)", re.IGNORECASE)
-_THAY_THE = re.compile(r"thay\s+thế", re.IGNORECASE)
+_TUNG_PHAN = re.compile(
+    r"một\s+số\s+(điều|khoản|điểm)|nội\s+dung|quy\s+định\s+li[êe]n\s+quan", re.IGNORECASE)
+_THAY_THE_RE = re.compile(r"thay\s+thế", re.IGNORECASE)
+_BAIBO_RE = re.compile(r"bãi\s+bỏ|h[uủ]y\s+bỏ|huỷ\s+bỏ", re.IGNORECASE)
+
+
+def html_to_text(html: str) -> str:
+    """`toanvan.html` -> text thuần, dùng cho mọi hàm dò quan hệ dựa trên regex.
+
+    KHÔNG dùng `re.sub(r"<[^>]+>", " ", html)` (bug thật 2026-08-22): một số VB có
+    thẻ inline (`<em>`, `<b>`...) chèn GIỮA TỪNG KÝ TỰ của số hiệu (HTML gốc tô đậm/
+    nghiêng riêng từng ký tự, vd `"...QH</em><em>1</em><em>3..."`) — thay tag bằng
+    khoảng trắng làm `"QH13"` vỡ thành `"QH 1 3"`, `SOHIEU_RE` chỉ bắt được `"QH"`,
+    mất `"13"`. `HTMLParser.text()` (KHÔNG truyền `separator`) nối các text-node liền
+    theo đúng DOM, giữ nguyên whitespace/newline THẬT đã có sẵn trong HTML nguồn —
+    đã kiểm tra trên dữ liệu thật: không gây dính chữ giữa các `<p>` (HTML gốc format
+    có xuống dòng thật giữa đoạn, không phải HTML minify)."""
+    return HTMLParser(html).text()
 
 
 def _norm_sh(s: str) -> str:
@@ -54,20 +76,22 @@ def _phan_loai_dong_tu(low: str) -> tuple[str, str] | None:
     """Phân loại REPLACES/AMENDS theo động từ (rule.md §3, §3.2). `low` = text đã
     lowercase. Trả (loai, edge) hoặc None nếu không có động từ nào khớp.
 
-    "thay thế" xét ngữ cảnh riêng: mọi lần xuất hiện đều KHÔNG kèm "một số
-    điều/khoản/điểm" trong ~50 ký tự sau đó -> REPLACES (thay nguyên văn bản).
-    CÓ dù chỉ 1 lần kèm "một số..." -> AMENDS (bảo thủ, giống quy tắc SUA/BAIBO)."""
+    "thay thế" và "bãi bỏ/hủy bỏ" xét ngữ cảnh riêng (khác SUA — SUA luôn chắc chắn
+    là AMENDS): mọi lần xuất hiện đều KHÔNG kèm cụm chỉ TỪNG PHẦN (_TUNG_PHAN — "một
+    số điều/khoản/điểm", "nội dung", "quy định liên quan") trong ~60 ký tự sau đó ->
+    REPLACES (nhắm thẳng toàn bộ văn bản đích). CÓ dù chỉ 1 lần kèm -> AMENDS (bảo
+    thủ, ít domino hơn khi không chắc 100%)."""
     if any(k in low for k in SUA):
         return "SuaDoi", "AMENDS"
-    if any(k in low for k in BAIBO):
-        return "ThayThe", "REPLACES"
-    matches = list(_THAY_THE.finditer(low))
-    if matches:
-        for m in matches:
-            if _MOT_SO_DIEU.search(low[m.end():m.end() + 50]):
-                return "SuaDoi", "AMENDS"
-        return "ThayThe", "REPLACES"
-    return None
+    matches = list(_BAIBO_RE.finditer(low)) + list(_THAY_THE_RE.finditer(low))
+    if not matches:
+        return None
+    # Bảo thủ trên TOÀN BỘ câu: chỉ cần 1 lần "bãi bỏ"/"thay thế" (bất kể loại nào)
+    # kèm cụm từng-phần gần đó -> AMENDS ngay, không để thứ tự pattern quyết định.
+    for m in matches:
+        if _TUNG_PHAN.search(low[m.end():m.end() + 60]):
+            return "SuaDoi", "AMENDS"
+    return "ThayThe", "REPLACES"
 
 
 def _quan_he_theo_cau(doan: str, own_so_hieu: str | None = None,
@@ -230,7 +254,7 @@ def extract_corpus_references(neo: Neo4jClient, base: Path, src_dirs: list[str],
         except Exception:
             continue
         title, own = data.get("title") or "", data.get("docNum")
-        text = re.sub(r"<[^>]+>", " ", tv.read_text(encoding="utf-8", errors="ignore"))
+        text = html_to_text(tv.read_text(encoding="utf-8", errors="ignore"))
         refs = extract_references(title, text, own)
         if llm is not None:
             # Bỏ AMENDS/REPLACES từ regex thô (hay bảo thủ/sót khi câu phức tạp) — LLM
