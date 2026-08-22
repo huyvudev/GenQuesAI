@@ -244,6 +244,54 @@ trên dữ liệu thật (HTML nguồn format có xuống dòng thật giữa đ
 minify) — nếu đổi nguồn dữ liệu khác (HTML minify, không xuống dòng) thì giả định
 này có thể sai, cần kiểm tra lại.
 
+### 3.4 Fallback đoạn cuối không được lẫn phần trước "Điều 1" + động từ SỚM NHẤT quyết định cả câu
+
+**2 bug thật khác, phát hiện khi chạy `--limit 40/300` thật (2026-08-22):**
+
+**(a) Fallback "N ký tự cuối" tái hiện bẫy gốc cho VB ngắn.** Khi VB không có cụm
+"hiệu lực thi hành"/"điều khoản thi hành" nào (mục 3.1 fallback lấy 3000 ký tự
+cuối), nếu VB **ngắn hơn 3000 ký tự** thì "3000 ký tự cuối" = **toàn văn bản, kể cả
+đoạn "Căn cứ..." ở đầu** — tái hiện đúng bẫy gốc (mục 3) qua đường vòng khác (ca
+thật `10/2007/QĐ-BKHCN`). **Sửa:** fallback không bao giờ lấy phần TRƯỚC "Điều 1" —
+tìm vị trí "Điều 1" trước, chỉ lấy N ký tự cuối của phần SAU nó.
+
+**(b) "SUA có mặt bất kỳ đâu trong câu luôn thắng" — sai khi câu liệt kê nhiều VB.**
+Ca thật (`19/2016/TT-BKHCN`): *"Bãi bỏ Thông tư số 19/2013/TT-BKHCN... và Thông tư
+số 17/2014/TT-BKHCN... **sửa đổi, bổ sung** Thông tư số 19/2013/TT-BKHCN..."* —
+"sửa đổi, bổ sung" ở đây chỉ **MÔ TẢ quan hệ 17/2014→19/2013 trong quá khứ** (17/2014
+từng sửa 19/2013), KHÔNG PHẢI hành động của VB hiện tại. Quy tắc cũ ("SUA có mặt bất
+kỳ đâu → AMENDS toàn câu") gán nhầm AMENDS cho CẢ HAI số hiệu, đúng ra cả hai đều bị
+`REPLACES` (VB mới bãi bỏ toàn bộ chuỗi gốc + bản đã sửa).
+
+**Sửa:** `_phan_loai_dong_tu` giờ tìm **VỊ TRÍ** của mọi ứng viên động từ (SUA, và
+"thay thế"/"bãi bỏ" đã xét `_TUNG_PHAN`), rồi dùng **động từ xuất hiện SỚM NHẤT**
+(vị trí nhỏ nhất) để quyết định loại quan hệ cho CẢ CÂU — khớp mẫu hành văn luật VN:
+động từ chính luôn ở đầu câu, các động từ sau chỉ mô tả phụ cho từng đối tượng liệt
+kê, không đổi loại quan hệ của toàn câu.
+
+**Đo lường cải thiện (local Neo4j, `--src most --limit 300`, model `deepseek-chat`,
+so trước/sau khi sửa 2 bug (a)+(b), đã dọn dữ liệu tồn đọng trước mỗi lần đo):**
+
+| | Trước | Sau |
+|---|---|---|
+| VB có Action ghi thật | 156 | 138 |
+| `(regex∪LLM)` là tập con của metadata | 42 (26,9%) | 40 (29,0%) |
+| `regex == LLM` | 41 (26,3%) | 41 (29,7%) |
+| VB có xung đột loại cạnh | 42 (26,9%) | 32 (23,2%) |
+| **Tổng số cạnh xung đột** | **94** | **62 (−34%)** |
+
+**Giới hạn CÒN LẠI, đã biết, QUYẾT ĐỊNH KHÔNG VÁ THÊM (2026-08-22):** tiêu đề/câu dài
+có nhiều mệnh đề mô tả phụ (vd *"...sửa đổi một số điều của Thông tư X **hướng dẫn
+thi hành** Nghị định Y..."* — chỉ X là đích thật, Y chỉ được NHẮC trong mệnh đề mô tả
+X, không phải đối tượng bị VB hiện tại tác động) vẫn khiến regex gán nhầm loại cạnh
+cho các số hiệu "chỉ được nhắc tới" (ca thật `16/2016/TT-BKHCN`). Đây là bài toán
+ngữ nghĩa câu thật — cần phân biệt "đích của hành động" với "số hiệu chỉ được nhắc
+trong mệnh đề mô tả", regex khó giải quyết triệt để mà không phình to phức tạp/khó
+bảo trì. **Quyết định (người dùng xác nhận):** KHÔNG vá thêm — để đúng vai trò thiết
+kế: khi regex sai kiểu này, LLM (đã đúng trong các ca đã kiểm) sẽ tự lệch → gắn cờ →
+đưa người rà soát. Không cần regex hoàn hảo, chỉ cần đủ tốt để làm 1 trong 3 nguồn
+đối chiếu.
+
 ## 4. Regex — GUIDED_BY (đọc đoạn "Căn cứ...", trước "Điều 1")
 
 ```
@@ -410,18 +458,21 @@ này qua nhánh nào" khi rà dữ liệu, và resume độc lập theo từng n
 
 **Đã test trên DB thật (2026-08-22, local Neo4j, `--src most`, model `deepseek-chat`):**
 - `--limit 3`: phát hiện + sửa 3 bug (mục 3.1, 3.2, 3.3 — final clause, "thay
-  thế"/"bãi bỏ" ngữ cảnh, HTML tag). Thêm 9 test khoá lại.
-- `--limit 40` (sau khi dọn dữ liệu tồn đọng từ các lần test trước — xoá
-  `Action{source:"llm"}` + reset field đồng thuận + reset 3 flag resume, chỉ trên
-  local test DB): **40 VB · nhánh A=35/B=5/C=0 · khớp=6 · 15 VB thực sự có Action ghi
-  (target tồn tại trong graph) · trong đó `(regex∪LLM)` là tập con đúng của metadata
-  4/15 · `regex==LLM` 3/15 · còn 11 xung đột loại cạnh**, phần lớn (9/11, VB
-  `113783`) do `referenceType=1` (đã biết, giữ nguyên theo quyết định người dùng),
-  còn lại (`110816`, `12041`) là ca văn bản mơ hồ thật — LLM và regex tự bất đồng,
-  **đúng chức năng thiết kế** (đưa người rà, không phải bug).
-- **Không còn phát hiện bug kỹ thuật nào** sau đợt sửa 3 bug trên. Tỷ lệ "khớp" thấp
-  (6/40 ≈ 15%) phản ánh đúng thực tế dữ liệu (nhiều VB `most` có referenceType=1
-  rải rác + độ mơ hồ ngôn ngữ pháp lý thật), không phải lỗi logic.
+  thế"/"bãi bỏ" ngữ cảnh, HTML tag).
+- `--limit 40`: phát hiện + sửa thêm 2 bug (mục 3.4 — fallback lẫn phần trước "Điều
+  1", động từ sớm nhất quyết định cả câu). 13 test tổng cộng khoá lại 5 bug.
+- `--limit 300` (sau sửa hết 5 bug, đã dọn dữ liệu tồn đọng trước khi đo): **300 VB
+  · nhánh A=267/B=33/C=0 · khớp=44 · 138 VB có Action ghi thật · `(regex∪LLM)⊆metadata`
+  40/138 (29,0%) · `regex==LLM` 41/138 (29,7%) · còn 62 cạnh xung đột (giảm từ 94,
+  −34%) trên 32/138 VB (23,2%)**.
+- **Nguyên nhân xung đột còn lại** (điều tra từng ca cụ thể, không phải đoán):
+  phần lớn do `referenceType=1` (đã biết, giữ nguyên theo quyết định người dùng) +
+  1 giới hạn ngữ nghĩa MỚI của regex (mục 3.4 cuối — tiêu đề/câu dài nhiều mệnh đề
+  mô tả) mà **quyết định không vá thêm**, để đúng vai trò thiết kế: quy tắc chỉ cần
+  đủ tốt làm 1 nguồn đối chiếu, LLM tự bắt các ca này khi regex sai.
+- **Không còn bug kỹ thuật nào phát hiện được** sau 5 lần sửa trên cùng 1 vấn đề gốc
+  (regex nhầm phạm vi/vị trí trong câu). Tỷ lệ "khớp" ~15% ở cấp VB phản ánh đúng
+  thực tế dữ liệu, không phải lỗi logic còn sót.
 
 **Còn cần trước khi chạy full corpus:**
 - [ ] Chốt phương án quota LLM (mục 0.1 đã cảnh báo — chi phí tăng từ ~13% VB lên

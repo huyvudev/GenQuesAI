@@ -134,6 +134,41 @@ def test_bai_bo_toan_bo_van_la_replaces() -> None:
     assert rel == [("ThayThe", "REPLACES", "05/2010/CT-BGDDT")]
 
 
+def test_dong_tu_som_nhat_quyet_dinh_ca_cau_khong_phai_sua_luon_thang() -> None:
+    """§3.4 (ca thật 19/2016/TT-BKHCN, 2026-08-22): "Bãi bỏ Thông tư A... và Thông tư
+    B... sửa đổi, bổ sung Thông tư A..." — "sửa đổi" chỉ MÔ TẢ quan hệ B→A trong quá
+    khứ, không phải hành động của VB hiện tại. Động từ SỚM NHẤT ("Bãi bỏ") phải quyết
+    định cả câu -> REPLACES cho CẢ HAI, không phải AMENDS như luật "SUA luôn thắng" cũ."""
+    text = (
+        "Điều 2. Hiệu lực thi hành. Thông tư này có hiệu lực thi hành kể từ ngày ban "
+        "hành. Bãi bỏ Thông tư số 19/2013/TT-BKHCN ngày 15 tháng 8 năm 2013 và Thông "
+        "tư số 17/2014/TT-BKHCN ngày 16 tháng 6 năm 2014 sửa đổi, bổ sung Thông tư số "
+        "19/2013/TT-BKHCN ngày 15 tháng 8 năm 2013."
+    )
+    rel = extract_final_clause_relations(text, "19/2016/TT-BKHCN")
+    assert set(rel) == {
+        ("ThayThe", "REPLACES", "19/2013/TT-BKHCN"),
+        ("ThayThe", "REPLACES", "17/2014/TT-BKHCN"),
+    }
+
+
+def test_fallback_khong_lay_phan_truoc_dieu_1() -> None:
+    """§3.1 mở rộng (ca thật 10/2007/QĐ-BKHCN, 2026-08-22): VB KHÔNG có cụm "hiệu lực
+    thi hành"/"điều khoản thi hành" -> fallback lấy N ký tự cuối. Nếu VB ngắn hơn N,
+    fallback KHÔNG được lẫn vào đoạn "Căn cứ..." trước "Điều 1" (bẫy gốc tái hiện qua
+    đường vòng)."""
+    text = (
+        "Căn cứ Nghị định số 81/2002/NĐ-CP; Căn cứ Nghị định số 54/2003/NĐ-CP sửa đổi "
+        "Nghị định số 81/2002/NĐ-CP; "
+        "Điều 1. Ban hành kèm theo Quyết định này Quy định. "
+        "Điều 2. Quyết định này có hiệu lực sau 15 ngày và thay thế Quyết định số "
+        "16/2003/QĐ-BKHCN ngày 18 tháng 7 năm 2003."
+    )
+    rel = extract_final_clause_relations(text, "10/2007/QĐ-BKHCN")
+    # KHÔNG được có 54/2003/NĐ-CP hay 81/2002/NĐ-CP (đoạn Căn cứ, trước Điều 1)
+    assert rel == [("ThayThe", "REPLACES", "16/2003/QĐ-BKHCN")]
+
+
 def test_html_to_text_giu_lien_mach_so_hieu_bi_tag_chen_giua() -> None:
     """Bug thật 2026-08-22 (VB 113783/most): HTML gốc tô đậm/nghiêng riêng TỪNG KÝ TỰ
     của số hiệu (vd do OCR/export PDF), <em> chèn giữa "QH" và "13". Dùng

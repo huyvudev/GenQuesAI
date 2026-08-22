@@ -72,26 +72,38 @@ def _sohieu_in(s: str) -> list[str]:
     return list(dict.fromkeys(_norm_sh(x) for x in SOHIEU_RE.findall(_norm_sh(s))))
 
 
-def _phan_loai_dong_tu(low: str) -> tuple[str, str] | None:
-    """Phân loại REPLACES/AMENDS theo động từ (rule.md §3, §3.2). `low` = text đã
-    lowercase. Trả (loai, edge) hoặc None nếu không có động từ nào khớp.
+_SUA_RE = re.compile("|".join(re.escape(k) for k in SUA))
 
-    "thay thế" và "bãi bỏ/hủy bỏ" xét ngữ cảnh riêng (khác SUA — SUA luôn chắc chắn
-    là AMENDS): mọi lần xuất hiện đều KHÔNG kèm cụm chỉ TỪNG PHẦN (_TUNG_PHAN — "một
-    số điều/khoản/điểm", "nội dung", "quy định liên quan") trong ~60 ký tự sau đó ->
-    REPLACES (nhắm thẳng toàn bộ văn bản đích). CÓ dù chỉ 1 lần kèm -> AMENDS (bảo
-    thủ, ít domino hơn khi không chắc 100%)."""
-    if any(k in low for k in SUA):
-        return "SuaDoi", "AMENDS"
-    matches = list(_BAIBO_RE.finditer(low)) + list(_THAY_THE_RE.finditer(low))
-    if not matches:
-        return None
-    # Bảo thủ trên TOÀN BỘ câu: chỉ cần 1 lần "bãi bỏ"/"thay thế" (bất kể loại nào)
-    # kèm cụm từng-phần gần đó -> AMENDS ngay, không để thứ tự pattern quyết định.
-    for m in matches:
+
+def _phan_loai_dong_tu(low: str) -> tuple[str, str] | None:
+    """Phân loại REPLACES/AMENDS theo động từ (rule.md §3, §3.2, §3.4). `low` = text
+    đã lowercase. Trả (loai, edge) hoặc None nếu không có động từ nào khớp.
+
+    ĐỘNG TỪ XUẤT HIỆN SỚM NHẤT trong câu quyết định loại quan hệ cho CẢ CÂU (rule.md
+    §3.4, phát hiện 2026-08-22) — KHÔNG phải "SUA có mặt bất kỳ đâu luôn thắng" (thiết
+    kế cũ, sai). Câu liệt kê nhiều VB bị bãi bỏ/thay thế thường có 1 VB được MÔ TẢ
+    bằng mệnh đề phụ chứa "sửa đổi, bổ sung [VB khác]" ở GIỮA/CUỐI câu (mô tả quan hệ
+    LỊCH SỬ giữa 2 VB đó, không phải hành động của VB hiện tại) — động từ mô tả đó
+    KHÔNG được áp cho cả câu, chỉ động từ CHÍNH (luôn ở đầu câu theo mẫu hành văn luật
+    VN) mới quyết định.
+
+    "thay thế"/"bãi bỏ" (không phải SUA) còn xét thêm ngữ cảnh riêng tại đúng vị trí
+    xuất hiện: kèm cụm TỪNG PHẦN (_TUNG_PHAN) trong ~60 ký tự sau -> AMENDS; không
+    kèm -> REPLACES."""
+    ung_vien: list[tuple[int, str, str]] = []
+    m = _SUA_RE.search(low)
+    if m:
+        ung_vien.append((m.start(), "SuaDoi", "AMENDS"))
+    for m in list(_BAIBO_RE.finditer(low)) + list(_THAY_THE_RE.finditer(low)):
         if _TUNG_PHAN.search(low[m.end():m.end() + 60]):
-            return "SuaDoi", "AMENDS"
-    return "ThayThe", "REPLACES"
+            ung_vien.append((m.start(), "SuaDoi", "AMENDS"))
+        else:
+            ung_vien.append((m.start(), "ThayThe", "REPLACES"))
+    if not ung_vien:
+        return None
+    ung_vien.sort(key=lambda x: x[0])
+    _, loai, edge = ung_vien[0]
+    return loai, edge
 
 
 def _quan_he_theo_cau(doan: str, own_so_hieu: str | None = None,
@@ -137,7 +149,17 @@ def extract_final_clause_relations(text: str, own_so_hieu: str | None = None,
     i = low.rfind("hiệu lực thi hành")
     if i < 0:
         i = low.rfind("điều khoản thi hành")
-    clause = text_n[i:] if i >= 0 else text_n[-3000:]
+    if i >= 0:
+        clause = text_n[i:]
+    else:
+        # Bug thật 2026-08-22 (VB 13234/most): fallback "N ký tự cuối" cho VB KHÔNG
+        # có "hiệu lực thi hành"/"điều khoản thi hành" — nếu VB ngắn hơn N ký tự thì
+        # "N ký tự cuối" = TOÀN VĂN, tái hiện đúng bẫy gốc (mục 3): đoạn "Căn cứ..."
+        # ở đầu bị lẫn vào, số hiệu trong đó bị gán nhầm REPLACES/AMENDS. Chặn: không
+        # bao giờ lấy phần TRƯỚC "Điều 1" (ranh giới cuối cùng của preamble).
+        j = text_n.find("Điều 1")
+        sau_dieu_1 = text_n[j:] if j > 0 else text_n
+        clause = sau_dieu_1[-3000:]
     return _quan_he_theo_cau(clause, own_so_hieu, exclude)
 
 
