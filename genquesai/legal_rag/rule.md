@@ -205,6 +205,33 @@ gán nhầm động từ này cho số hiệu ở CÂU KHÁC trong cùng đoạn
 thành từng câu (theo `.`/`;`), chỉ tạo cạnh khi ĐỘNG TỪ và SỐ HIỆU cùng nằm trong
 MỘT CÂU (hàm `_quan_he_theo_cau`).
 
+**⚠️ Bẫy #3 (phát hiện 2026-08-23, user phát hiện qua đọc thủ công) — đoạn "Hiệu lực
+thi hành" KHÔNG được đọc ĐẾN HẾT TOÀN VĂN:** thiết kế ban đầu (`clause =
+text_n[i:]`) đọc từ vị trí "hiệu lực thi hành" tới HẾT văn bản, không giới hạn. Nếu
+Điều đó KHÔNG phải Điều cuối — rất hay gặp: theo sau còn "Điều X+1. Trách nhiệm thi
+hành"/"Tổ chức thực hiện" liệt kê **NHIỆM VỤ giao bộ ngành** (vd *"Bộ trưởng Bộ Tài
+chính có trách nhiệm nghiên cứu, trình Chính phủ ban hành Nghị định **thay thế**
+Nghị định số X..."*) hoặc theo sau là **Phụ lục** dài (bảng biểu/mẫu, có thể chứa số
+hiệu VB khác trong ví dụ/tham chiếu không liên quan) — nội dung không liên quan đó
+bị quét nhầm tìm REPLACES/AMENDS.
+
+Câu "nhiệm vụ giao..." nói về **VIỆC LÀM TRONG TƯƠNG LAI** (soạn thảo VB mới sẽ thay
+thế), KHÔNG PHẢI chính văn bản hiện tại đang thay thế VB đích — bản chất khác hẳn
+câu "Hiệu lực thi hành" thật (tuyên bố NGAY LÚC NÀY văn bản này thay thế ai).
+
+**Đo thật (mẫu 5.000 VB đầu corpus):** 410 VB (8,2%) có đoạn "hiệu lực thi hành" dài
+bất thường (>2.500 ký tự, kèm "nhiệm vụ"/"tổ chức thực hiện") — có ca dài tới
+**66.965–69.192 ký tự** (VB `15-2026-NĐ-CP`, `11-NQ-CP`).
+
+**Quy tắc sửa (`_cat_doan_hieu_luc`):** đoạn dừng ở **Điều tiếp theo** (regex `Điều
+\d+\.`) hoặc **Phụ lục**, tuỳ cái nào đến trước; không có cả hai thì fallback cắt ở
+2.000 ký tự. Áp dụng cho CẢ regex (`extract_final_clause_relations`) LẪN input LLM
+(`consensus._preamble_va_dieu_khoan_cuoi`) — trước đó LLM cắt cứng 1.500 ký tự vẫn có
+thể lẫn nội dung "nhiệm vụ" nếu nó rơi trong 1.500 ký tự đầu, không đủ để chặn hẳn.
+Nhánh fallback ("không tìm thấy 'hiệu lực thi hành', lấy N ký tự cuối văn bản") cũng
+sửa tương tự: cắt bỏ Phụ lục trước khi lấy N ký tự cuối, tránh rơi hẳn vào Phụ lục
+với VB không có tiêu đề "hiệu lực thi hành" rõ.
+
 ### 3.2 "thay thế"/"bãi bỏ" xét ngữ cảnh riêng — REPLACES toàn bộ vs AMENDS từng phần
 
 **Phát hiện đợt 2026-08-22 (2 ca thật):**
@@ -390,10 +417,18 @@ thuật toán tự chọn bên nào đúng).
 
 ### 5.2 Vai trò TRÍCH XUẤT DUY NHẤT (không metadata, không regex match — biện pháp cuối)
 
-**Input:** TOÀN VĂN bản (không giới hạn ở tiêu đề/preamble — không còn gợi ý cấu
-trúc nào để bám, có thể quan hệ nằm ở bất kỳ đâu trong văn bản). Cắt theo giới hạn
-token của model (`synth_context_budget_chars`-style — xem `config.py`), ưu tiên giữ
-preamble + các đoạn có nhắc số hiệu VB nếu văn bản quá dài để đưa hết.
+**Input (sửa 2026-08-23 — KHÔNG còn đọc TOÀN VĂN như thiết kế v2 cũ):** CÙNG 2 vùng
+với nhánh A/B — preamble "Căn cứ..." + đoạn "Hiệu lực thi hành"
+(`_preamble_va_dieu_khoan_cuoi`, dùng chung `_cat_doan_hieu_luc` để dừng đúng ranh
+giới — mục 3.1 bẫy #3). **Lý do đổi (user phát hiện thật, không phải suy đoán):**
+thiết kế cũ "đọc toàn văn vì không còn gợi ý cấu trúc nào để bám" hoá ra chính là lỗ
+hổng — LLM đọc TOÀN VĂN dễ lẫn các đoạn "Trách nhiệm thi hành"/"Tổ chức thực hiện"
+liệt kê NHIỆM VỤ giao bộ ngành (vd *"...trình Nghị định thay thế Nghị định Y..."* —
+việc giao cho TƯƠNG LAI, không phải hành vi của chính VB này) hoặc Phụ lục dài, y hệt
+bẫy mục 3.1 nhưng xảy ra ở phía LLM thay vì regex. Quy tắc "chỉ đọc 2 vùng đúng ngữ
+nghĩa" (mục 0) áp dụng CHO CẢ 3 nhánh, không riêng gì có nguồn đối chiếu hay không —
+"không có gì để bám" không phải lý do hợp lệ để đọc lung tung, mà ngược lại càng cần
+kỷ luật hơn vì không có gì đối chiếu để bắt lỗi khi LLM đọc nhầm.
 
 **Không có gì để đối chiếu** — kết quả LLM là kết quả duy nhất, nhưng vẫn
 `da_duyet=false` (1 nguồn không đủ để tự động duyệt theo quy tắc đồng thuận mục 2) —
@@ -409,6 +444,51 @@ gắn cờ riêng để người rà biết đây là ca "chỉ có LLM", mức 
 3. **Bắt lỗi ở chính metadata** — vbpl.vn không phải lúc nào cũng gắn `referenceType`
    đúng 100%; LLM đọc độc lập là nguồn thứ 3 giúp phát hiện ca metadata VÀ regex cùng
    sai (hiếm nhưng không phải zero — vd cùng bị đánh lừa bởi 1 kiểu lỗi OCR).
+
+### 5.4 CanCu KHÔNG có số hiệu — tra ngược tên luật → so_hieu (phát hiện 2026-08-23)
+
+**Vấn đề (người dùng phát hiện qua CSV rà soát thủ công):** nhiều đoạn "Căn cứ..."
+chỉ ghi **tên luật + ngày ban hành**, không có số hiệu dạng `N/YYYY/LOẠI` — vd
+*"Căn cứ Luật Tổ chức Chính phủ ngày 18 tháng 02 năm 2025"*. Cả regex (`SOHIEU_RE`
+không khớp gì) lẫn LLM (prompt mục 5 ra lệnh *"Chỉ lấy VB có SỐ HIỆU rõ. Không có
+thì bỏ qua"* — cố ý thêm để tránh LLM tự bịa số hiệu) đều **im lặng bỏ qua** ca này —
+không lỗi, không cảnh báo, chỉ là thiếu (recall gap).
+
+**Đo thật (mẫu 3.000 VB đầu corpus, script ad-hoc dùng `CAU_RE` bắt câu "Căn cứ..."):**
+9.008 câu "Căn cứ" tìm được, **4.484 câu (49,8%) KHÔNG có số hiệu trong câu** — quy
+mô lớn, không phải ca hiếm, đáng sửa.
+
+**Phân loại thủ công các ví dụ mẫu → 3 nhóm cần xử lý khác nhau:**
+1. **Tên luật thật, tra ngược được** (vd "Luật Tổ chức Chính phủ ngày 18/02/2025") —
+   nhóm đáng sửa nhất, chiếm phần lớn.
+2. **Hiến pháp** ("Căn cứ Hiến pháp nước CHXHCN Việt Nam...") — **loại trừ hẳn, không
+   tra** — Hiến pháp không phải `Norm` tham gia luồng REPLACES/AMENDS/GUIDED_BY thông
+   thường của hệ thống (văn bản gốc, không có "văn bản hướng dẫn nó" theo nghĩa cấp
+   dưới → cấp trên mà GUIDED_BY mô tả).
+3. **Text lỗi OCR/encode** (vd "Căn cứ đạn Tổ ó-hicÄ thính phủ...") — lỗi ở chính dữ
+   liệu crawl gốc, KHÔNG sửa được ở tầng regex/LLM — bỏ qua, chấp nhận mất.
+
+**Thiết kế sửa (chỉ áp dụng cho `CanCu`/GUIDED_BY — REPLACES/AMENDS đọc TIÊU ĐỀ, tiêu
+đề luôn tự ghi số hiệu rõ theo thể thức hành chính VN nên không gặp vấn đề này):**
+
+1. Đổi schema LLM trả về: khi KHÔNG thấy số hiệu rõ cho 1 CanCu, LLM trả `ten_luat`
+   (tên đầy đủ, giữ nguyên cách viết trong văn bản) + `ngay` (ngày ban hành nếu có)
+   THAY VÌ bỏ qua — **LLM KHÔNG được tự đoán/suy luận ra số hiệu**, chỉ trích nguyên
+   văn tên + ngày (đúng nguyên tắc "vá OCR số hiệu SẴN CÓ" khác với "bịa số hiệu
+   KHÔNG CÓ" — 2 việc khác nhau, chỉ việc đầu được phép).
+2. LLM **tự loại trừ Hiến pháp** — thêm câu rõ trong prompt: không trích "Hiến pháp"
+   thành ref (dù có hay không có số hiệu).
+3. Bước RESOLVE riêng (deterministic, không phải LLM) sau khi có `ten_luat`+`ngay`:
+   tra Neo4j `MATCH (n:Norm) WHERE n.loai_vb IN ['Luật','Bộ luật'] AND n.tieu_de
+   CONTAINS <từ khoá rút từ ten_luat>` (bỏ tiền tố "Luật"/"Bộ luật", giữ phần tên
+   riêng) — nếu khớp **ĐÚNG 1** kết quả → dùng `so_hieu` đó, tạo cạnh CanCu bình
+   thường (vẫn qua đồng thuận mục 2, KHÔNG tự động duyệt chỉ vì resolve được tên).
+   Nếu khớp 0 hoặc ≥2 kết quả (mơ hồ) → **bỏ, không đoán** — giữ nguyên triết lý "chỉ
+   tự động khi chắc chắn, còn lại đưa người rà" xuyên suốt tài liệu này.
+4. Đối chiếu thêm `ngay` (nếu Neo4j có `ngay_ban_hanh`) khi có ≥2 kết quả trùng tên
+   để giảm mơ hồ — nhưng KHÔNG bắt buộc (nhiều luật cùng tên do sửa toàn diện qua các
+   năm, chỉ 1 bản còn hiệu lực thường là bản có ngày mới nhất — cân nhắc khi implement
+   thực tế, không cố định cứng ở đây).
 
 ## 6. Chính sách confidence / duyệt (v3 — đồng thuận, không theo loại cạnh)
 
@@ -585,3 +665,20 @@ online trước khi bỏ giới hạn hoàn toàn, để bắt sớm các khác 
       VB đã xử lý đúng bằng tên flag mới** — 7.550 VB có `refs_llm_done` cũ giờ
       KHÔNG còn bị coi là "đã xong" (tên flag mới không trùng), sẽ tự động được đưa
       vào batch tiếp theo như bình thường.
+- [x] **Sự cố full corpus lần 1 (2026-08-21→22, `--src '*' --workers 15`, không
+      `--limit`, thẳng production):** chạy đến ~2.500 VB rồi CRASH TOÀN BỘ job —
+      `LLM.chat_json()` bị cắt cụt response (hết `max_tokens=800` giữa chừng, hay
+      gặp ở VB nhiều CanCu/nhánh C đọc toàn văn) → `JSONDecodeError` không được bắt
+      ở đâu cả → lan tới `ThreadPoolExecutor.pool.map()` → giết CẢ batch, hàng chục
+      nghìn VB còn lại chưa xử lý. Đã sửa 3 chỗ:
+      1. `agent/llm.py::chat_json()` — nhánh fallback (parse JSON từ text thường)
+         giờ tự bắt lỗi, trả `{}` thay vì raise tiếp — không còn crash 2 lớp.
+      2. `reference_extractor.py::extract_references_llm()` — tăng `max_tokens`
+         800→2000 cho lời gọi `chat_json`, giảm khả năng bị cắt cụt ngay từ đầu.
+      3. `consensus.py::_xu_ly_1_vb()` — bọc try/except quanh phần đọc toanvan.html
+         + `resolve_relations` + ghi flag; lỗi (bất kỳ loại nào, không chỉ JSON) chỉ
+         in cảnh báo + trả `None` (VB đó KHÔNG set flag → tự động được thử lại ở
+         lượt resume kế tiếp), không còn làm sập cả `pool.map()`.
+      22 test cũ (`test_reference_extractor.py` + `test_consensus.py`) vẫn pass sau
+      khi sửa. Cần chạy lại `--limit` nhỏ trên production để xác nhận trước khi mở
+      lại full corpus không giới hạn.

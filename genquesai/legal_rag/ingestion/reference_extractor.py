@@ -43,9 +43,20 @@ SOHIEU_RE = re.compile(r"\d+\s*/\s*\d{4}\s*/\s*[A-ZĐ0-9]+(?:-[A-ZĐ0-9]+)*", re
 #     REPLACES như quy tắc "bãi bỏ = luôn REPLACES" ngây thơ ban đầu).
 # Cả hai đều dùng chung 1 luật: đi kèm cụm chỉ TỪNG PHẦN (_TUNG_PHAN) trong ~60 ký
 # tự sau động từ -> AMENDS; không kèm -> REPLACES (nhắm thẳng toàn bộ văn bản đích).
+#
+# Bug thật 2026-08-23 (phát hiện qua 2 lượt Claude tự đọc tay đối chiếu — VB
+# 113460): "thay thế CÁC QUY ĐỊNH VỀ [chủ đề cụ thể] quy định tại Quyết định số
+# X..." KHÔNG khớp mẫu cũ (chỉ có "quy định liên quan", không có "các quy định
+# về") -> bị phân loại nhầm REPLACES toàn bộ thay vì AMENDS từng phần. Thêm "các
+# quy định về" — CÓ "các" (số nhiều, ngụ ý "một số quy định", không phải cả VB) —
+# CỐ Ý KHÔNG thêm "quy định về" trần (không "các") vì dễ trùng với câu tả TOÀN BỘ
+# nội dung VB đích (vd "thay thế Nghị định quy định về xử phạt vi phạm..." — ở đây
+# "quy định về X" đang mô tả CẢ Nghị định đó nói về gì, không phải giới hạn phạm vi
+# sửa đổi) — sẽ gây under-classify REPLACES thành AMENDS sai nếu thêm bừa.
 SUA = ("sửa đổi", "bổ sung", "điều chỉnh", "dừng thực hiện", "đình chỉ thi hành")
 _TUNG_PHAN = re.compile(
-    r"một\s+số\s+(điều|khoản|điểm)|nội\s+dung|quy\s+định\s+li[êe]n\s+quan", re.IGNORECASE)
+    r"một\s+số\s+(điều|khoản|điểm)|nội\s+dung|quy\s+định\s+li[êe]n\s+quan|"
+    r"các\s+quy\s+định\s+về", re.IGNORECASE)
 _THAY_THE_RE = re.compile(r"thay\s+thế", re.IGNORECASE)
 _BAIBO_RE = re.compile(r"bãi\s+bỏ|h[uủ]y\s+bỏ|huỷ\s+bỏ", re.IGNORECASE)
 
@@ -59,6 +70,30 @@ _MO_TA_RE = re.compile(
     r"hướng\s+dẫn\s+thi\s+hành|quy\s+định\s+chi\s+tiết|quy\s+định\s+về|"
     r"(?:được\s+)?sửa\s+đổi[,]?\s*bổ\s+sung", re.IGNORECASE)
 _QUOTE_CHARS = '"“”'
+
+# Bug thật 2026-08-23 (user phát hiện): đoạn "Hiệu lực thi hành" trước đây đọc TỪ VỊ
+# TRÍ TÌM THẤY ĐẾN HẾT TOÀN VĂN (không giới hạn) — nếu Điều đó KHÔNG phải Điều cuối
+# (thường gặp: theo sau còn "Điều X+1. Trách nhiệm thi hành"/"Tổ chức thực hiện" liệt
+# kê NHIỆM VỤ giao bộ ngành, có thể nhắc "...trình Nghị định thay thế Nghị định
+# Y..." — đây là VIỆC GIAO CHO TƯƠNG LAI, không phải chính VB này thay thế Y; hoặc
+# theo sau là PHỤ LỤC dài hàng chục nghìn ký tự) thì nội dung không liên quan đó bị
+# quét nhầm tìm REPLACES/AMENDS. Đo thật trên 5000 VB mẫu: 410 VB (8,2%) có đoạn dài
+# bất thường (>2500 ký tự, có "nhiệm vụ"/"tổ chức thực hiện") — có ca thật dài tới
+# 66.965-69.192 ký tự. Chặn: dừng đoạn ở Điều TIẾP THEO hoặc Phụ lục, tuỳ cái nào đến
+# trước; không có cả hai thì fallback cắt ở 2000 ký tự (khớp ngân sách LLM dùng ở
+# `consensus._preamble_va_dieu_khoan_cuoi`, rule.md §3.1/§5.1).
+_DIEU_TIEP_RE = re.compile(r"Điều\s+\d+\s*\.", re.IGNORECASE)
+_PHU_LUC_RE = re.compile(r"phụ\s*lục", re.IGNORECASE)
+
+
+def _cat_doan_hieu_luc(text_n: str, i: int) -> str:
+    """Đoạn 'Hiệu lực thi hành' bắt đầu tại `i` trong `text_n`, dừng ở Điều tiếp theo
+    hoặc Phụ lục (cái nào đến trước), fallback cắt 2000 ký tự nếu không có cả hai."""
+    duoi = text_n[i:]
+    biens = [m.start() for m in _DIEU_TIEP_RE.finditer(duoi) if m.start() > 0]
+    biens += [m.start() for m in _PHU_LUC_RE.finditer(duoi) if m.start() > 0]
+    j = min(biens) if biens else len(duoi)
+    return duoi[: min(j, 2000)]
 
 
 def html_to_text(html: str) -> str:
@@ -100,12 +135,25 @@ def _phan_loai_dong_tu(low: str) -> tuple[str, str] | None:
 
     "thay thế"/"bãi bỏ" (không phải SUA) còn xét thêm ngữ cảnh riêng tại đúng vị trí
     xuất hiện: kèm cụm TỪNG PHẦN (_TUNG_PHAN) trong ~60 ký tự sau -> AMENDS; không
-    kèm -> REPLACES."""
+    kèm -> REPLACES.
+
+    **Tách riêng "bãi bỏ" khỏi "thay thế"/"sửa đổi" (2026-08-25, yêu cầu người dùng):**
+    "bãi bỏ" (xoá bỏ, KHÔNG có nội dung mới thay cho nội dung cũ) khác bản chất với
+    "thay thế"/"sửa đổi" (CÓ nội dung mới) — trước đây gộp chung vào ThayThe/SuaDoi
+    theo phạm vi, làm mất thông tin "đây là xoá hẳn hay chỉ đổi nội dung". Giờ trả
+    `loai` riêng `BaiBoToanBo`/`BaiBoTungPhan` (edge vẫn theo phạm vi như cũ —
+    REPLACES nếu toàn bộ, AMENDS nếu từng phần — chỉ khác ở field `loai` để phân biệt
+    hành vi)."""
     ung_vien: list[tuple[int, str, str]] = []
     m = _SUA_RE.search(low)
     if m:
         ung_vien.append((m.start(), "SuaDoi", "AMENDS"))
-    for m in list(_BAIBO_RE.finditer(low)) + list(_THAY_THE_RE.finditer(low)):
+    for m in _BAIBO_RE.finditer(low):
+        if _TUNG_PHAN.search(low[m.end():m.end() + 60]):
+            ung_vien.append((m.start(), "BaiBoTungPhan", "AMENDS"))
+        else:
+            ung_vien.append((m.start(), "BaiBoToanBo", "REPLACES"))
+    for m in _THAY_THE_RE.finditer(low):
         if _TUNG_PHAN.search(low[m.end():m.end() + 60]):
             ung_vien.append((m.start(), "SuaDoi", "AMENDS"))
         else:
@@ -205,16 +253,22 @@ def extract_final_clause_relations(text: str, own_so_hieu: str | None = None,
     if i < 0:
         i = low.rfind("điều khoản thi hành")
     if i >= 0:
-        clause = text_n[i:]
+        clause = _cat_doan_hieu_luc(text_n, i)
     else:
         # Bug thật 2026-08-22 (VB 13234/most): fallback "N ký tự cuối" cho VB KHÔNG
         # có "hiệu lực thi hành"/"điều khoản thi hành" — nếu VB ngắn hơn N ký tự thì
         # "N ký tự cuối" = TOÀN VĂN, tái hiện đúng bẫy gốc (mục 3): đoạn "Căn cứ..."
         # ở đầu bị lẫn vào, số hiệu trong đó bị gán nhầm REPLACES/AMENDS. Chặn: không
         # bao giờ lấy phần TRƯỚC "Điều 1" (ranh giới cuối cùng của preamble).
+        #
+        # Bug thật 2026-08-23: "N ký tự cuối VĂN BẢN" cũng dính đúng lỗi mục 3.1 nếu
+        # VB kết thúc bằng Phụ lục dài — N ký tự cuối rơi hẳn vào Phụ lục, không phải
+        # điều khoản thật. Cắt bỏ Phụ lục trước khi lấy N ký tự cuối, nếu có.
         j = text_n.find("Điều 1")
         sau_dieu_1 = text_n[j:] if j > 0 else text_n
-        clause = sau_dieu_1[-3000:]
+        m = _PHU_LUC_RE.search(sau_dieu_1)
+        gioi_han = sau_dieu_1[: m.start()] if m else sau_dieu_1
+        clause = gioi_han[-3000:]
     return _quan_he_theo_cau(clause, own_so_hieu, exclude)
 
 
@@ -245,33 +299,89 @@ def extract_references(title: str, text: str, own_so_hieu: str | None = None) ->
     return rel + guided
 
 
-_EDGE_MAP = {"ThayThe": "REPLACES", "SuaDoi": "AMENDS", "CanCu": "GUIDED_BY"}
+_EDGE_MAP = {"ThayThe": "REPLACES", "SuaDoi": "AMENDS", "CanCu": "GUIDED_BY",
+            "BaiBoToanBo": "REPLACES", "BaiBoTungPhan": "AMENDS"}
 _LLM_SYS = (
     "Bạn bóc TOÀN BỘ quan hệ tham chiếu của một văn bản pháp luật Việt Nam thành JSON: "
-    "{\"refs\":[{\"target\":\"số hiệu VB được tham chiếu (vd 24/2023/QH15)\", "
-    "\"loai\":\"ThayThe|SuaDoi|CanCu\", \"confidence\":0.0-1.0}]}. "
-    "ThayThe = văn bản này THAY THẾ TOÀN BỘ VB đích; SuaDoi = SỬA ĐỔI/BỔ SUNG (kể cả "
-    "'thay thế MỘT SỐ ĐIỀU/KHOẢN' — vẫn là SuaDoi, không phải ThayThe); CanCu = CĂN CỨ "
+    "{\"refs\":[{\"target\":\"số hiệu VB được tham chiếu nếu CÓ (vd 24/2023/QH15), "
+    "để trống nếu không có\", \"ten_luat\":\"tên đầy đủ VB nếu KHÔNG thấy số hiệu rõ "
+    "(vd 'Luật Tổ chức Chính phủ'), để trống nếu đã có target\", "
+    "\"ngay\":\"ngày ban hành dạng DD/MM/YYYY nếu có, chỉ điền khi dùng ten_luat\", "
+    "\"loai\":\"ThayThe|SuaDoi|BaiBoToanBo|BaiBoTungPhan|CanCu\", \"confidence\":0.0-1.0}]}. "
+    "ThayThe = văn bản này THAY THẾ TOÀN BỘ VB đích bằng NỘI DUNG MỚI; SuaDoi = SỬA ĐỔI/"
+    "BỔ SUNG (kể cả 'thay thế MỘT SỐ ĐIỀU/KHOẢN' — vẫn là SuaDoi, không phải ThayThe); "
+    "BaiBoToanBo = BÃI BỎ/HUỶ BỎ TOÀN BỘ VB đích (xoá bỏ, KHÔNG có nội dung mới thay "
+    "thế — khác ThayThe ở chỗ không có gì thay vào); BaiBoTungPhan = bãi bỏ/huỷ bỏ "
+    "MỘT SỐ điều/khoản/nội dung (không phải toàn bộ VB); CanCu = CĂN CỨ "
     "(trích dẫn làm cơ sở pháp lý, thường ở đoạn đầu 'Căn cứ...'). "
     "BẮT BUỘC liệt kê ĐẦY ĐỦ mọi quan hệ tìm thấy — một văn bản thường có NHIỀU CanCu "
     "(mỗi dòng 'Căn cứ...' là 1 CanCu riêng) CỘNG THÊM tối đa 1 ThayThe/SuaDoi nếu có. "
     "KHÔNG chỉ chọn 1 quan hệ 'quan trọng nhất' rồi bỏ qua các CanCu khác. "
-    "SỬA số hiệu bị lỗi OCR (vd 'QH1 3' → 'QH13', '24/2023/QH1' → '24/2023/QH13'). "
-    "Chỉ lấy VB có SỐ HIỆU rõ. Không có thì {\"refs\":[]}."
+    "SỬA số hiệu bị lỗi OCR (vd 'QH1 3' → 'QH13', '24/2023/QH1' → '24/2023/QH13') — "
+    "nhưng nếu văn bản KHÔNG ghi số hiệu ở đâu cả thì để target trống và dùng ten_luat, "
+    "TUYỆT ĐỐI KHÔNG tự bịa/đoán ra một số hiệu không có trong văn bản. "
+    "KHÔNG trích 'Hiến pháp' thành ref (dù có hay không có số hiệu)."
 )
 
+_TEN_LUAT_PREFIX_RE = re.compile(r"^(bộ\s+luật|luật)\s+", re.IGNORECASE)
+_NGAY_RE = re.compile(r"(\d{1,2})[/-](\d{1,2})[/-](\d{4})")
 
-def extract_references_llm(llm, title: str, preamble: str, own_so_hieu: str | None) -> list[tuple[str, str, str]]:
-    """LLM bóc quan hệ (vá số hiệu OCR hỏng + phân loại đúng thay/sửa/căn cứ) — rule.md §5."""
+
+def _resolve_ten_luat(neo: Neo4jClient | None, ten_luat: str, ngay: str | None = None) -> str | None:
+    """Tra ngược tên luật (không có số hiệu trong văn bản gốc) → so_hieu, qua so khớp
+    `tieu_de` trong Neo4j — rule.md §5.4. CHỈ trả về khi khớp DUY NHẤT 1 kết quả (hoặc
+    ≥2 kết quả nhưng đúng 1 khớp `ngay`) — mơ hồ thì bỏ, KHÔNG đoán (giữ nguyên triết
+    lý "chỉ tự động khi chắc chắn" xuyên suốt rule.md). Loại trừ Hiến pháp hẳn (không
+    phải Norm tham gia luồng REPLACES/AMENDS/GUIDED_BY thông thường)."""
+    if neo is None or not ten_luat:
+        return None
+    ten = ten_luat.strip()
+    if "hiến pháp" in ten.lower():
+        return None
+    tu_khoa = _TEN_LUAT_PREFIX_RE.sub("", ten).strip()
+    if len(tu_khoa) < 4:
+        return None
+    rows = neo.run(
+        "MATCH (n:Norm) WHERE n.loai_vb IN ['Luat','BoLuat'] "
+        "AND toLower(n.tieu_de) CONTAINS toLower($tu_khoa) "
+        "RETURN n.so_hieu AS so_hieu, n.ngay_ban_hanh AS ngay_ban_hanh",
+        tu_khoa=tu_khoa)
+    if len(rows) == 1:
+        return rows[0]["so_hieu"]
+    if len(rows) > 1 and ngay:
+        m = _NGAY_RE.search(ngay)
+        if m:
+            d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+            khop = [r for r in rows if r["ngay_ban_hanh"] is not None
+                   and (r["ngay_ban_hanh"].year, r["ngay_ban_hanh"].month, r["ngay_ban_hanh"].day) == (y, mo, d)]
+            if len(khop) == 1:
+                return khop[0]["so_hieu"]
+    return None
+
+
+def extract_references_llm(llm, title: str, preamble: str, own_so_hieu: str | None,
+                           neo: Neo4jClient | None = None) -> list[tuple[str, str, str]]:
+    """LLM bóc quan hệ (vá số hiệu OCR hỏng + phân loại đúng thay/sửa/căn cứ) — rule.md §5.
+    `neo` (tuỳ chọn): khi CanCu không có số hiệu, tra ngược tên luật → so_hieu qua
+    Neo4j (rule.md §5.4) — không truyền thì các ca này bị bỏ (hành vi cũ)."""
     own = _norm_sh(own_so_hieu) if own_so_hieu else None
     user = f"Văn bản: {own_so_hieu}\nTiêu đề: {title}\n\nPhần đầu (căn cứ):\n{(preamble or '')[:3500]}"
-    data = llm.chat_json(_LLM_SYS, user)
+    # max_tokens mặc định (800) hay bị cắt cụt giữa chừng với VB có nhiều CanCu
+    # (đặc biệt nhánh C đọc toàn văn) → JSON hỏng. Tăng lên 2000 cho đủ chỗ liệt kê.
+    data = llm.chat_json(_LLM_SYS, user, max_tokens=2000)
     out: list[tuple[str, str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for r in (data.get("refs", []) if isinstance(data, dict) else []):
         loai = (r.get("loai") or "").strip()
+        if loai not in _EDGE_MAP:
+            continue
         tgt = _norm_sh(r.get("target") or "")
-        if loai in _EDGE_MAP and tgt and tgt != own and (_EDGE_MAP[loai], tgt) not in {(e, s) for _, e, s in out}:
-            out.append((loai, _EDGE_MAP[loai], tgt))
+        if not tgt and loai == "CanCu":
+            tgt = _resolve_ten_luat(neo, r.get("ten_luat") or "", r.get("ngay")) or ""
+        edge = _EDGE_MAP[loai]
+        if tgt and tgt != own and (edge, tgt) not in seen:
+            out.append((loai, edge, tgt))
+            seen.add((edge, tgt))
     return out
 
 
@@ -340,7 +450,7 @@ def extract_corpus_references(neo: Neo4jClient, base: Path, src_dirs: list[str],
             i = _norm_sh(text).find("Điều 1")
             preamble = _norm_sh(text)[:i] if i > 0 else _norm_sh(text)[:3500]
             seen = {(e, s) for _, e, s in refs}
-            for loai, edge, tgt in extract_references_llm(llm, title, preamble, own):
+            for loai, edge, tgt in extract_references_llm(llm, title, preamble, own, neo=neo):
                 if (edge, tgt) not in seen:
                     refs.append((loai, edge, tgt))
                     seen.add((edge, tgt))

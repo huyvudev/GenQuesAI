@@ -10,6 +10,15 @@ import logging
 from datetime import date
 from pathlib import Path
 
+# `httpx`/`httpcore` (dùng bởi OpenAI SDK) log 1 dòng INFO mỗi request nếu root
+# logger bật INFO — vô hại khi tuần tự, nhưng dưới `refs --consensus --workers N`
+# (N luồng LLM đồng thời) tạo lượng log khổng lồ, làm nghẽn pipe khi chạy nền qua
+# `grep`/redirect trên Windows-Git Bash (từng làm job full corpus chậm ~200 lần,
+# gần như đứng hình dù không lỗi — rule.md mục 9.2). Không có chỗ nào trong package
+# này dùng `logging` cho output riêng, nên chỉ cần khoá 2 logger ồn này là đủ.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 from .config import get_settings
 from .graph import Neo4jClient
 from .graph.schema import init_schema
@@ -55,7 +64,6 @@ def cmd_health(args) -> int:
 
 
 def cmd_ingest(args) -> int:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
     s = get_settings()
     base = Path(args.corpus or s.corpus_dir)
     srcs = args.src or ["*"]
@@ -138,7 +146,6 @@ def cmd_refs(args) -> int:
     `--consensus`: luồng v3 — metadata + regex + LLM ĐỒNG THUẬN đa nguồn (rule.md
     mục 0.1/2), LLM LUÔN chạy (không cần `--llm`), duyệt tự động chỉ khi các nguồn
     khả dụng khớp nhau."""
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
     s = get_settings()
     base = Path(args.corpus or s.corpus_dir)
     srcs = args.src or ["*"]
@@ -230,9 +237,7 @@ def cmd_cdi_runs(args) -> int:
 
 
 def cmd_cdi_resync(args) -> int:
-    import logging
     from .cdi.resync import resync_corpus, make_vbpl_fetcher
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
     s = get_settings()
     fetch = make_vbpl_fetcher()
     store = None if args.dry_run else QdrantStore(s)
@@ -284,11 +289,9 @@ def cmd_cdi_verify(args) -> int:
 
 
 def cmd_cdi_watch(args) -> int:
-    import logging
     from .cdi.watch import watch_folder
     from .cdi.pipeline import ingest_pdfs
     from .retrieval.embedder import Embedder
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
     s = get_settings()
     base = Path(args.corpus or s.corpus_dir)
     store = QdrantStore(s); emb = Embedder(s.embed_model, device=args.device)

@@ -9,7 +9,7 @@ Quy tắc đầy đủ: xem `../rule.md` (mục 0.1, 2, 5, 6, 7 — v3). Tóm t�
 - Nhánh B (không metadata, có regex): so regex vs llm — khớp mới duyệt.
 - Nhánh C (không metadata, không regex): chỉ LLM — không đối chiếu được, không tự duyệt.
 - `reconcile.py::reconcile_corpus` (chạy lúc `ingest`) đã tạo Action từ metadata với
-  chính sách RIÊNG của nó (`source IS NULL`) — module này KHÔNG tạo Action trùng cho
+  chính sách RIÊNG của nó — module này KHÔNG tạo Action trùng cho
   nhánh A, mà đọc lại Action đã có rồi cập nhật field đồng thuận + `da_duyet`.
 
 Phần thuần (`extract_metadata_relations`, `dong_thuan`) tách khỏi phần chạm DB
@@ -23,7 +23,9 @@ from pathlib import Path
 
 from ..graph.client import Neo4jClient
 from .reconcile import REL_MAP
-from .reference_extractor import _norm_sh, extract_references, extract_references_llm, html_to_text
+from .reference_extractor import (
+    _cat_doan_hieu_luc, _norm_sh, _PHU_LUC_RE, extract_references, extract_references_llm, html_to_text,
+)
 
 Quan_He = tuple[str, str, str]   # (loai, edge, target_so_hieu)
 
@@ -85,43 +87,62 @@ def dong_thuan(metadata: list[Quan_He] | None, regex: list[Quan_He] | None,
     return {"nhanh": "C", "khop": None, "metadata": None, "regex": None, "llm": llm_p}
 
 
-# ── DB: nhánh A — cập nhật Action đã có (do reconcile.py tạo, source IS NULL) ──────
-_FIND_META_ACTIONS = """
-MATCH (a:Action)-[:ENACTED_BY]->(:Norm {norm_id:$id})
-WHERE a.source IS NULL
-RETURN a.action_id AS action_id
-"""
-_UPDATE_CONSENSUS = """
-MATCH (a:Action {action_id:$aid})
-SET a.nguon_metadata=$meta, a.nguon_regex=$regex, a.nguon_llm=$llm,
-    a.mismatch=$mismatch, a.only_llm=$only_llm, a.da_duyet=$duyet
-"""
+def dong_thuan_per_edge(metadata: list[Quan_He] | None, regex: list[Quan_He] | None,
+                        llm: list[Quan_He]) -> list[dict]:
+    """So khớp CẤP TỪNG CẠNH (rule.md mục X, sửa 2026-08-24) — quyết định `da_duyet`
+    riêng cho mỗi (edge,target), KHÔNG broadcast 1 quyết định chung cho cả VB như
+    `dong_thuan()` cũ.
+
+    **Bug đã sửa:** thiết kế cũ chỉ tạo Action từ 1 "nguồn mặc định" (metadata ở
+    nhánh A, regex ở nhánh B, llm ở nhánh C) — nếu nguồn mặc định KHÔNG thấy 1 cạnh
+    nhưng nguồn khác (vd LLM) THẤY, cạnh đó bị lặng lẽ không tạo Action nào, kể cả
+    khi cần gắn cờ `mismatch` để người rà biết. Ở đây: hợp NHẤT mọi cạnh mà BẤT KỲ
+    nguồn khả dụng nào tìm thấy, mỗi cạnh tự xét đồng thuận riêng — có mặt ở ĐỦ mọi
+    nguồn khả dụng thì `da_duyet=True`; thiếu ở ≥1 nguồn khả dụng thì `mismatch=True`;
+    chỉ có LLM là nguồn duy nhất (không metadata, không regex) thì `only_llm=True`.
+
+    Trả list dict {"loai","edge","target","da_duyet","mismatch","only_llm","nguon"}
+    (`nguon` = tên các nguồn đã tìm thấy đúng cạnh này, để người rà biết vì sao)."""
+    sources: dict[str, set[tuple[str, str]] | None] = {
+        "metadata": _as_pairs(metadata) if metadata is not None else None,
+        "regex": _as_pairs(regex) if regex is not None else None,
+        "llm": _as_pairs(llm),  # LLM luôn khả dụng (list rỗng nếu không thấy gì)
+    }
+    available = {k: v for k, v in sources.items() if v is not None}
+    chi_llm = len(available) == 1  # tương đương nhánh C (chỉ "llm" nằm trong available)
+
+    loai_map: dict[tuple[str, str], str] = {}
+    for refs in (metadata, regex, llm):
+        for loai, edge, target in (refs or []):
+            loai_map[(edge, target)] = loai
+
+    all_pairs: set[tuple[str, str]] = set()
+    for v in available.values():
+        all_pairs |= v
+
+    out: list[dict] = []
+    for edge, target in sorted(all_pairs):
+        found_in = sorted(name for name, v in available.items() if (edge, target) in v)
+        if chi_llm:
+            da_duyet, mismatch, only_llm = False, False, True
+        else:
+            khop = len(found_in) == len(available)
+            da_duyet, mismatch, only_llm = khop, not khop, False
+        out.append({"loai": loai_map[(edge, target)], "edge": edge, "target": target,
+                    "da_duyet": da_duyet, "mismatch": mismatch, "only_llm": only_llm,
+                    "nguon": found_in})
+    return out
 
 
-def _ghi_ket_qua_dong_thuan(neo: Neo4jClient, norm_id: str, kq: dict, source: str) -> dict:
-    """Ghi kết quả `dong_thuan` vào graph. Nhánh A: UPDATE Action đã có (không tạo
-    trùng — rule.md mục 0.1). Nhánh B/C: TẠO Action mới (không có gì để update)."""
-    meta_j = json.dumps(sorted(kq["metadata"]), ensure_ascii=False) if kq["metadata"] is not None else None
-    regex_j = json.dumps(sorted(kq["regex"]), ensure_ascii=False) if kq["regex"] is not None else None
-    llm_j = json.dumps(sorted(kq["llm"]), ensure_ascii=False)
-    mismatch = kq["khop"] is False
-    only_llm = kq["nhanh"] == "C"
-    duyet = bool(kq["khop"])   # None (nhánh C) -> False; True/False giữ nguyên
-
-    if kq["nhanh"] == "A":
-        aids = [r["action_id"] for r in neo.run(_FIND_META_ACTIONS, id=norm_id)]
-        for aid in aids:
-            neo.run(_UPDATE_CONSENSUS, aid=aid, meta=meta_j, regex=regex_j, llm=llm_j,
-                   mismatch=mismatch, only_llm=only_llm, duyet=duyet)
-        return {"nhanh": "A", "actions_updated": len(aids), "khop": kq["khop"]}
-
-    # Nhánh B/C: chưa có Action nào — tạo mới từ nguồn "đáng tin nhất khả dụng"
-    # (regex ở nhánh B, llm ở nhánh C — rule.md mục 5.1/5.2 không chỉ định 1 nguồn
-    # "thắng" khi lệch, chỉ chỉ định AI ĐƯỢC HIỂN THỊ MẶC ĐỊNH khi cần tạo cạnh).
-    candidate_pairs = kq["regex"] if kq["nhanh"] == "B" else kq["llm"]
-    n_created = 0
-    for edge, target in candidate_pairs:
-        loai = {"REPLACES": "ThayThe", "AMENDS": "SuaDoi", "GUIDED_BY": "CanCu"}[edge]
+def _ghi_canh_moi(neo: Neo4jClient, norm_id: str, edges: list[dict], source: str) -> list[dict]:
+    """Tạo Action cho từng cạnh trong `edges` (đầu ra `dong_thuan_per_edge`). Chỉ TẠO
+    MỚI — không còn nhánh "update Action cũ" (rebuild 2026-08-24: mọi Action cũ đã bị
+    xoá sạch trước khi chạy lại, xem rule.md). Trả lại `edges` bổ sung field `da_tao`
+    (False nếu VB đích không tồn tại trong graph — không thể MERGE cạnh, cần biết để
+    không tưởng nhầm là đã ghi)."""
+    out: list[dict] = []
+    for e in edges:
+        loai, edge, target = e["loai"], e["edge"], e["target"]
         conf = 0.85 if edge in ("REPLACES", "AMENDS") else 0.6
         rows = neo.run(
             f"""
@@ -130,29 +151,31 @@ def _ghi_ket_qua_dong_thuan(neo: Neo4jClient, norm_id: str, kq: dict, source: st
             MERGE (a:Action {{action_id:$aid}})
               SET a.loai=$loai, a.confidence=$conf, a.da_duyet=$duyet, a.enacted_by=$sid,
                   a.ngay_hieu_luc=src.ngay_hieu_luc, a.source=$source,
-                  a.nguon_metadata=$meta, a.nguon_regex=$regex, a.nguon_llm=$llm,
-                  a.mismatch=$mismatch, a.only_llm=$only_llm
+                  a.mismatch=$mismatch, a.only_llm=$only_llm, a.nguon=$nguon
             MERGE (a)-[:ENACTED_BY]->(src)
             MERGE (a)-[:AFFECTS]->(tgt)
             MERGE (src)-[:{edge}]->(tgt)
             RETURN 1
             """, sid=norm_id, tsh=target, aid=f"{norm_id}->{target}:{edge}:{source}",
-            loai=loai, conf=conf, duyet=duyet, source=source,
-            meta=meta_j, regex=regex_j, llm=llm_j, mismatch=mismatch, only_llm=only_llm)
-        if rows:
-            n_created += 1
-    return {"nhanh": kq["nhanh"], "actions_created": n_created, "khop": kq["khop"]}
+            loai=loai, conf=conf, duyet=e["da_duyet"], source=source,
+            mismatch=e["mismatch"], only_llm=e["only_llm"], nguon=json.dumps(e["nguon"], ensure_ascii=False))
+        out.append({**e, "da_tao": bool(rows)})
+    return out
 
 
 def _preamble_va_dieu_khoan_cuoi(text: str) -> str:
-    """Đoạn "Căn cứ..." (đầu) + đoạn "Hiệu lực thi hành" (cuối) ghép lại — input cho
-    LLM ở nhánh A/B (rule.md §3.1/§5.1). PHẢI cho LLM thấy CẢ đoạn cuối, không chỉ
-    preamble — nếu không LLM sẽ thiếu đúng những gì regex thiếu (không phải vì LLM
-    sai, mà vì không được cho xem), khiến so sánh mismatch giả tạo.
+    """Đoạn "Căn cứ..." (đầu) + đoạn "Hiệu lực thi hành" (cuối) ghép lại — input DUY
+    NHẤT cho LLM ở CẢ 3 nhánh A/B/C (rule.md §3.1/§5.1/§5.2 — sửa 2026-08-23: nhánh C
+    không còn đọc TOÀN VĂN, xem `resolve_relations`). PHẢI cho LLM thấy CẢ đoạn cuối,
+    không chỉ preamble — nếu không LLM sẽ thiếu đúng những gì regex thiếu (không phải
+    vì LLM sai, mà vì không được cho xem), khiến so sánh mismatch giả tạo.
 
-    Chia ngân sách ký tự RÕ RÀNG (preamble ≤1800, đoạn cuối ≤1500) vì
-    `extract_references_llm` cắt CHUỖI TỔNG ở 3500 ký tự — nếu không chia trước, đoạn
-    cuối (thường quan trọng hơn cho REPLACES/AMENDS) dễ bị cắt mất khi preamble đã dài."""
+    Đoạn cuối dùng chung `_cat_doan_hieu_luc` với regex (dừng ở Điều tiếp theo/Phụ
+    lục, KHÔNG chỉ cắt cứng theo ký tự) — sửa 2026-08-23: cắt cứng 1500 ký tự vẫn có
+    thể lẫn "Trách nhiệm thi hành"/"Tổ chức thực hiện" (nhiệm vụ giao bộ ngành,
+    không phải hành vi của chính VB này) nếu nội dung đó rơi trong 1500 ký tự đầu
+    sau "hiệu lực thi hành". Chia ngân sách ký tự RÕ RÀNG (preamble ≤1800, đoạn cuối
+    ≤1500) vì `extract_references_llm` cắt CHUỖI TỔNG ở 3500 ký tự."""
     text_n = _norm_sh(text)
     low = text_n.lower()
     i = text_n.find("Điều 1")
@@ -160,37 +183,67 @@ def _preamble_va_dieu_khoan_cuoi(text: str) -> str:
     j = low.rfind("hiệu lực thi hành")
     if j < 0:
         j = low.rfind("điều khoản thi hành")
-    dieu_khoan_cuoi = (text_n[j:] if j >= 0 else text_n[-1500:])[:1500]
+    if j >= 0:
+        dieu_khoan_cuoi = _cat_doan_hieu_luc(text_n, j)[:1500]
+    else:
+        m = _PHU_LUC_RE.search(text_n)
+        gioi_han = text_n[: m.start()] if m else text_n
+        dieu_khoan_cuoi = gioi_han[-1500:]
     return (f"[PHẦN ĐẦU — căn cứ]\n{preamble}\n\n"
             f"[PHẦN CUỐI — hiệu lực thi hành, thường ghi rõ thay thế/sửa đổi VB nào]\n{dieu_khoan_cuoi}")
 
 
+_LOG_LOCK = threading.Lock()
+
+
+def _ghi_log_tien_do(log_path: Path, record: dict) -> None:
+    """Ghi 1 dòng JSONL vào file tiến trình — append-only, khoá luồng (workers>1),
+    flush ngay để không mất khi mất điện/mất mạng giữa chừng (rebuild 2026-08-24,
+    yêu cầu người dùng: '1 cơ hội duy nhất', phải có checkpoint sống)."""
+    with _LOG_LOCK:
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False, default=str) + "\n")
+            f.flush()
+
+
 def resolve_relations(neo: Neo4jClient, llm_client, norm_id: str, data: dict,
-                      title: str, text: str, own_so_hieu: str | None) -> dict:
+                      title: str, text: str, own_so_hieu: str | None,
+                      log_path: Path | None = None) -> dict:
     """Xử lý 1 VB theo luồng v3 (rule.md mục 0.1): xác định nhánh A/B/C, gọi LLM đúng
-    input theo nhánh, đối chiếu, ghi kết quả. `llm_client` bắt buộc (khác
-    `reference_extractor.extract_corpus_references` — ở đây LLM LUÔN chạy)."""
+    input theo nhánh, đối chiếu CẤP TỪNG CẠNH (`dong_thuan_per_edge`, rebuild
+    2026-08-24), ghi kết quả vào graph + (nếu có `log_path`) 1 dòng JSONL checkpoint.
+    `llm_client` bắt buộc (khác `reference_extractor.extract_corpus_references` — ở
+    đây LLM LUÔN chạy)."""
     meta = extract_metadata_relations(data)
     regex = extract_references(title, text, own_so_hieu)
 
     meta_arg = meta if meta else None
     regex_arg = regex if regex else None
 
-    if meta_arg is not None or regex_arg is not None:
-        # Nhánh A/B — LLM đọc preamble + đoạn hiệu lực thi hành (mục 5.1), có nguồn
-        # khác để đối chiếu — KHÔNG chỉ preamble (mục 3.1: câu thay/sửa hay ở cuối văn bản).
-        llm_input = _preamble_va_dieu_khoan_cuoi(text)
-        llm_refs = extract_references_llm(llm_client, title, llm_input, own_so_hieu)
-    else:
-        # Nhánh C — LLM là nguồn duy nhất, đọc TOÀN VĂN (mục 5.2), không giới hạn preamble.
-        llm_refs = extract_references_llm(llm_client, title, _norm_sh(text)[:12000], own_so_hieu)
+    # LLM luôn đọc CÙNG 2 vùng (preamble "Căn cứ..." + đoạn "Hiệu lực thi hành",
+    # mục 5.1) BẤT KỂ nhánh A/B/C — kể cả nhánh C (không có gì đối chiếu) KHÔNG còn
+    # đọc "TOÀN VĂN" như thiết kế cũ (mục 5.2 cũ). Sửa 2026-08-23 (user phát hiện):
+    # đọc toàn văn khiến LLM lẫn vào các đoạn "Trách nhiệm thi hành"/"Tổ chức thực
+    # hiện" liệt kê NHIỆM VỤ giao bộ ngành (vd "...trình Nghị định thay thế Nghị
+    # định Y...") — đây là VIỆC GIAO CHO TƯƠNG LAI, không phải chính VB này thay thế
+    # Y, nhưng LLM đọc toàn văn dễ hiểu nhầm thành quan hệ thật. Quy tắc "chỉ đọc 2
+    # vùng đúng ngữ nghĩa" (rule.md §0) áp dụng cho CẢ regex LẪN LLM, không chỉ regex.
+    llm_input = _preamble_va_dieu_khoan_cuoi(text)
+    llm_refs = extract_references_llm(llm_client, title, llm_input, own_so_hieu, neo=neo)
 
-    kq = dong_thuan(meta_arg, regex_arg, llm_refs)
-    ghi = _ghi_ket_qua_dong_thuan(neo, norm_id, kq, source="llm")
-    return {**kq, **ghi}
+    kq = dong_thuan(meta_arg, regex_arg, llm_refs)  # chỉ để phân nhánh + thống kê
+    edges = dong_thuan_per_edge(meta_arg, regex_arg, llm_refs)
+    edges = _ghi_canh_moi(neo, norm_id, edges, source="llm")
+
+    if log_path is not None:
+        _ghi_log_tien_do(log_path, {
+            "norm_id": norm_id, "so_hieu": own_so_hieu, "title": title,
+            "nhanh": kq["nhanh"], "n_edges": len(edges), "edges": edges,
+        })
+    return {**kq, "edges": edges}
 
 
-def _xu_ly_1_vb(neo: Neo4jClient, llm_client, d: Path) -> dict | None:
+def _xu_ly_1_vb(neo: Neo4jClient, llm_client, d: Path, log_path: Path | None = None) -> dict | None:
     """Xử lý 1 VB (đọc file + `resolve_relations` + set flag resume). Trả `kq` hoặc
     `None` nếu đọc file lỗi. Hàm trần, không đụng state chia sẻ — an toàn gọi song
     song (mỗi lời gọi 1 luồng), xem `process_corpus`."""
@@ -199,16 +252,23 @@ def _xu_ly_1_vb(neo: Neo4jClient, llm_client, d: Path) -> dict | None:
     except Exception:
         return None
     title, own = data.get("title") or "", data.get("docNum")
-    text = html_to_text((d / "toanvan.html").read_text(encoding="utf-8", errors="ignore"))
-    kq = resolve_relations(neo, llm_client, d.name, data, title, text, own)
-    flag = _FLAG[kq["nhanh"]]
-    neo.run(f"MATCH (n:Norm {{norm_id:$id}}) SET n.{flag}=true", id=d.name)
-    return kq
+    try:
+        text = html_to_text((d / "toanvan.html").read_text(encoding="utf-8", errors="ignore"))
+        kq = resolve_relations(neo, llm_client, d.name, data, title, text, own, log_path=log_path)
+        flag = _FLAG[kq["nhanh"]]
+        neo.run(f"MATCH (n:Norm {{norm_id:$id}}) SET n.{flag}=true", id=d.name)
+        return kq
+    except Exception as e:
+        # 1 VB lỗi (JSON LLM hỏng, mạng chập chờn, ...) KHÔNG được làm sập cả batch
+        # song song — batch full corpus từng chết vì đúng lỗi này (rule.md mục 9.2).
+        # Không set flag → VB này sẽ được thử lại ở lượt resume kế tiếp.
+        print(f"  ! lỗi xử lý {d.name}: {e!r}")
+        return None
 
 
 def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str],
                    resume: bool = True, limit: int | None = None, workers: int = 1,
-                   log=print) -> dict:
+                   log=print, log_path: Path | None = None) -> dict:
     """Quét raw dirs, chạy `resolve_relations` theo luồng v3 cho từng VB. Resume qua
     3 flag riêng theo nhánh (rule.md mục 8) — mỗi VB chỉ rơi vào đúng 1 nhánh nên chỉ
     1 flag/VB được set, nhưng kiểm tra cả 3 để coi là "đã xong". `limit`: chỉ chọn N
@@ -224,7 +284,18 @@ def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str]
     if resume:
         for flag in _FLAG.values():
             done |= {r["id"] for r in neo.run(f"MATCH (n:Norm) WHERE n.{flag}=true RETURN n.norm_id AS id")}
-    can_xu_ly = [d for d in doc_dirs if (d / "toanvan.html").exists() and d.name not in done]
+    # Chỉ xử lý thư mục corpus có Norm THẬT trong Neo4j (đã `ingest`) — thư mục
+    # crawl nhưng chưa ingest thì SET flag ở cuối `_xu_ly_1_vb` là no-op (không
+    # khớp node nào), nên KHÔNG BAO GIỜ được đánh dấu "đã xong" → nếu không lọc ở
+    # đây, mỗi lần resume sẽ xử lý lại vô hạn đúng các VB này, tốn LLM vô ích và có
+    # thể tạo Action mồ côi (rule.md mục 9.2 — phát hiện khi full corpus "kẹt" ở
+    # ~29.219 dù job vẫn chạy bình thường).
+    all_norm_ids = {r["id"] for r in neo.run("MATCH (n:Norm) RETURN n.norm_id AS id")}
+    can_xu_ly = [d for d in doc_dirs
+                 if (d / "toanvan.html").exists() and d.name in all_norm_ids and d.name not in done]
+    n_chua_ingest = sum(1 for d in doc_dirs if (d / "toanvan.html").exists() and d.name not in all_norm_ids)
+    if n_chua_ingest:
+        log(f"  (bỏ qua {n_chua_ingest} thư mục corpus chưa `ingest` vào Neo4j — chạy `ingest` trước)")
     if limit:
         can_xu_ly = can_xu_ly[:limit]
 
@@ -234,7 +305,7 @@ def process_corpus(neo: Neo4jClient, llm_client, base: Path, src_dirs: list[str]
 
     def _viec(d: Path) -> None:
         nonlocal n_proc
-        kq = _xu_ly_1_vb(neo, llm_client, d)
+        kq = _xu_ly_1_vb(neo, llm_client, d, log_path=log_path)
         if kq is None:
             return
         with lock:

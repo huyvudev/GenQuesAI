@@ -1,27 +1,18 @@
-"""CLI hợp nhất — điểm vào duy nhất cho toàn bộ luồng sinh + chấm bộ đề (ROADMAP C).
+"""CLI hợp nhất — điểm vào duy nhất cho `genquesai`.
 
-    genquesai corpus soi [...]      framework.cli soi   — báo cáo năng lực corpus
-    genquesai corpus xuat [...]     framework.cli xuat  — Neo4j -> JSONL
-    genquesai gen [...]             generator.run_all   — sinh bộ đề (--c4: chạy cổng
-                                                           C4 ngay sau khi sinh xong)
-    genquesai run [...]             evaluate.score      — chấm hệ được đo
-    genquesai report [...]          in lại báo cáo từ file kết quả đã lưu, không chấm lại
+    genquesai qa-gen [--total N] [--workers N]   sinh bộ đề QA luật (5 loại,
+                                                  xem genquesai.legal_rag.qa_gen)
 
-Mỗi lệnh con nhận đúng cờ của module gốc — xem `genquesai <lệnh> --help`. File này
-CHỈ định tuyến (router mỏng), không chứa logic riêng ngoài `report` (thứ chưa có sẵn
-ở đâu khác) — sinh/chấm/soi corpus vẫn nằm nguyên ở `generator`/`evaluate`/`framework`,
-tránh trùng một nguồn sự thật.
-
-Vì sao KHÔNG dùng `argparse` subparsers lồng cho `corpus`: `framework.cli` đã tự định
-nghĩa hai lệnh con `xuat`/`soi` của riêng nó — khai lại ở đây là hai nguồn sự thật
-cho cùng một tập cờ, lệch nhau là chuyện thời gian. Định tuyến bằng cách cắt token đầu
-rồi giao thẳng phần argv còn lại cho module gốc tự phân tích.
+Sửa 2026-08-26: hệ sinh câu hỏi cũ (`generator`/`evaluate`/`framework`, dựa trên
+kNN cosine trên corpus phẳng) đã bị xoá theo yêu cầu người dùng — không còn đủ chỗ
+dựa để đoán quan hệ, thay bằng `genquesai.legal_rag.qa_gen` (dùng thẳng quan hệ
+pháp lý thật từ Neo4j + nội dung Neo4j/Qdrant). CLI này định tuyến sang hệ mới.
 """
 from __future__ import annotations
 
 import sys
 
-_LENH = ("corpus", "gen", "run", "report")
+_LENH = ("qa-gen",)
 
 
 def _tro_giup() -> str:
@@ -29,83 +20,31 @@ def _tro_giup() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    from generator.common import setup_stdout
-    setup_stdout()                      # console Windows mặc định cp1252 -> vỡ chữ Việt
+    sys.stdout.reconfigure(encoding="utf-8")   # console Windows mặc định cp1252 -> vỡ chữ Việt
     argv = sys.argv[1:] if argv is None else argv
-    if not argv:
+    if not argv or argv[0] in ("-h", "--help"):
         print(_tro_giup())
-        return 2
-    if argv[0] in ("-h", "--help"):
-        print(_tro_giup())
-        return 0
+        return 0 if argv else 2
 
     lenh, con = argv[0], argv[1:]
-    if lenh == "corpus":
-        from framework.cli import main as chay
-        return chay(con)
-    if lenh == "gen":
-        return _gen(con)
-    if lenh == "run":
-        from evaluate.score import main as chay
-        return chay(con)
-    if lenh == "report":
-        return _report(con)
+    if lenh == "qa-gen":
+        return _qa_gen(con)
 
     print(f"lệnh không biết: {lenh!r} — có: {', '.join(_LENH)}\n\n{_tro_giup()}")
     return 2
 
 
-def _gen(argv: list[str]) -> int:
-    """`generator.run_all`, cộng cờ `--c4` gọi tiếp `generator.run_c4` trên đúng file
-    vừa ghi — hai bước tách rời trong code gốc (I2: kiểm-trước-khi-tin), nhưng người
-    dùng ngoài không cần biết ranh giới đó, gộp lại cho tiện dùng.
-
-    `--help`/`-h` xử lý TAY ở đây (không `add_help` cho argparse riêng) vì phải in
-    CẢ cờ của lệnh này (`--c4`) LẪN cờ gốc của `run_all` — hai parser tách rời, một
-    trong hai `--help` tự động sẽ nuốt mất cờ của bên kia."""
+def _qa_gen(argv: list[str]) -> int:
     import argparse
 
-    from generator.run_all import main as sinh
+    from genquesai.legal_rag.qa_gen.run import main as sinh
 
-    if "-h" in argv or "--help" in argv:
-        print("thêm, so với `python -m generator.run_all --help`:\n"
-              "  --c4        chạy cổng C4 (gọi LLM) ngay sau khi sinh xong\n")
-        return sinh(["--help"])
-
-    ap = argparse.ArgumentParser(prog="genquesai gen", add_help=False)
-    ap.add_argument("--c4", action="store_true")
-    ap.add_argument("--out", default="out/eval_set.jsonl")
-    a, con = ap.parse_known_args(argv)
-
-    ra = sinh(["--out", a.out, *con])
-    if ra != 0 or not a.c4:
-        return ra
-
-    from generator.run_c4 import main as c4
-    return c4([a.out])
-
-
-def _report(argv: list[str]) -> int:
-    """In lại đúng báo cáo `evaluate.score` đã in khi chạy `run` — đọc từ file JSON đã
-    lưu (`--out` của `run`), KHÔNG chấm lại. Dùng khi muốn xem lại/so hai lần chạy mà
-    không tốn thời gian gọi lại hệ được đo."""
-    import argparse
-    import json
-    from pathlib import Path
-
-    from evaluate.score import in_bao_cao
-
-    ap = argparse.ArgumentParser(prog="genquesai report")
-    ap.add_argument("file", nargs="?", default="out/ket_qua_eval.json",
-                    help="file JSON do 'genquesai run --out <file>' ghi ra")
+    ap = argparse.ArgumentParser(prog="genquesai qa-gen")
+    ap.add_argument("--total", type=int, default=20, help="tổng số câu hỏi mục tiêu (mặc định 20)")
+    ap.add_argument("--workers", type=int, default=8, help="số luồng gọi LLM song song (mặc định 8)")
     a = ap.parse_args(argv)
 
-    duong_dan = Path(a.file)
-    if not duong_dan.exists():
-        print(f"không thấy {duong_dan} — chạy 'genquesai run' trước")
-        return 1
-    bao = json.loads(duong_dan.read_text(encoding="utf-8"))
-    in_bao_cao(bao, bao["rows"])
+    sinh(tong_muc_tieu=a.total, workers=a.workers)
     return 0
 
 

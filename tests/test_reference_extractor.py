@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from genquesai.legal_rag.ingestion.reference_extractor import (
     extract_final_clause_relations, extract_guided_by, extract_references,
-    extract_title_relations, html_to_text,
+    extract_references_llm, extract_title_relations, html_to_text, _resolve_ten_luat,
 )
 
 
@@ -28,7 +28,7 @@ def test_sua_doi_bo_sung_ro_rang() -> None:
 def test_bai_bo_don_thuan_la_replaces() -> None:
     rel = extract_title_relations(
         "Quyết định bãi bỏ Chỉ thị số 05/2010/CT-BGDDT", "10/2024/QD-BGDDT")
-    assert rel == [("ThayThe", "REPLACES", "05/2010/CT-BGDDT")]
+    assert rel == [("BaiBoToanBo", "REPLACES", "05/2010/CT-BGDDT")]
 
 
 def test_nhac_so_hieu_khong_dong_tu_khong_tao_canh() -> None:
@@ -111,6 +111,35 @@ def test_final_clause_boilerplate_khong_tao_canh_sai() -> None:
     assert rel == [("ThayThe", "REPLACES", "44/2013/TTLT-BCT-BKHCN")]
 
 
+def test_final_clause_khong_lan_sang_dieu_nhiem_vu_sau_do() -> None:
+    """Bug thật 2026-08-23 (user phát hiện, đo trên 5000 VB mẫu: 410 VB/8,2% dính,
+    có ca dài tới 66.965 ký tự): trước đây đọc từ "hiệu lực thi hành" ĐẾN HẾT TOÀN
+    VĂN — nếu Điều đó không phải Điều cuối, Điều TIẾP THEO ("Trách nhiệm thi hành"/
+    "Tổ chức thực hiện") liệt kê NHIỆM VỤ giao bộ ngành (vd "trình Nghị định thay
+    thế Nghị định Y") bị lẫn vào — đây là VIỆC GIAO CHO TƯƠNG LAI, không phải chính
+    VB này thay thế Y. Phải dừng ở Điều tiếp theo, không đọc lan."""
+    text = (
+        "Điều 5. Hiệu lực thi hành. Nghị định này có hiệu lực thi hành từ ngày ký. "
+        "Điều 6. Trách nhiệm thi hành. Bộ trưởng Bộ Tài chính có trách nhiệm nghiên "
+        "cứu, trình Chính phủ ban hành Nghị định thay thế Nghị định số 20/2020/NĐ-CP "
+        "trong năm 2027."
+    )
+    rel = extract_final_clause_relations(text, "10/2026/NĐ-CP")
+    assert rel == []
+
+
+def test_final_clause_khong_lan_sang_phu_luc() -> None:
+    """Cùng bug — VB kết thúc bằng Phụ lục dài (bảng biểu, mẫu...) cũng phải bị chặn,
+    không chỉ Điều tiếp theo."""
+    text = (
+        "Điều 5. Hiệu lực thi hành. Nghị định này có hiệu lực thi hành từ ngày ký. "
+        "PHỤ LỤC I DANH MỤC BAN HÀNH KÈM THEO Mẫu số 01: ... thay thế Mẫu số cũ tại "
+        "Thông tư số 20/2020/TT-BTC ..."
+    )
+    rel = extract_final_clause_relations(text, "10/2026/NĐ-CP")
+    assert rel == []
+
+
 def test_bai_bo_noi_dung_tai_vb_khac_la_amends_khong_phai_replaces() -> None:
     """§3.2 mở rộng (ca thật 06/2016/TT-BKHCN, 2026-08-22): "bãi bỏ NỘI DUNG quy định
     liên quan đến... quy định TẠI Quyết định số X" = chỉ bãi bỏ 1 PHẦN NỘI DUNG nằm
@@ -123,7 +152,26 @@ def test_bai_bo_noi_dung_tai_vb_khac_la_amends_khong_phai_replaces() -> None:
         "tháng 12 năm 2007 của Bộ trưởng Bộ Khoa học và Công nghệ."
     )
     rel = extract_final_clause_relations(text, "06/2016/TT-BKHCN")
-    assert rel == [("SuaDoi", "AMENDS", "32/2007/QĐ-BKHCN")]
+    assert rel == [("BaiBoTungPhan", "AMENDS", "32/2007/QĐ-BKHCN")]
+
+
+def test_thay_the_cac_quy_dinh_ve_la_amends_khong_phai_replaces() -> None:
+    """§3.2 mở rộng thêm (ca thật 113460, phát hiện 2026-08-23 qua 2 agent con đọc
+    tay đối chiếu độc lập): "thay thế CÁC QUY ĐỊNH VỀ [chủ đề] quy định tại X" cũng
+    là sửa TỪNG PHẦN như "quy định liên quan" — mẫu cũ CHƯA khớp cụm "các quy định
+    về", khiến 30/2008/QĐ-BGDĐT bị phân loại nhầm REPLACES toàn bộ."""
+    text = (
+        "hiệu lực thi hành kể từ ngày 10 tháng 8 năm 2016. 2. Thông tư liên tịch này "
+        "bãi bỏ quy định liên quan đến tổ chức kiểm tra, cấp chứng chỉ tin học tại "
+        "Khoản 5, Điều 3 Thông tư số 03/2011/TT-BGDĐT ngày 28/01/2011; thay thế các "
+        "quy định về tổ chức kiểm tra, cấp chứng chỉ tin học theo chương trình giáo "
+        "dục thường xuyên quy định tại Quyết định số 30/2008/QĐ-BGDĐT ngày 06/6/2008."
+    )
+    rel = extract_final_clause_relations(text, "37/2016/TTLT-BTTTT-BGDĐT")
+    assert set(rel) == {
+        ("BaiBoTungPhan", "AMENDS", "03/2011/TT-BGDĐT"),
+        ("SuaDoi", "AMENDS", "30/2008/QĐ-BGDĐT"),
+    }
 
 
 def test_bai_bo_toan_bo_van_la_replaces() -> None:
@@ -131,7 +179,7 @@ def test_bai_bo_toan_bo_van_la_replaces() -> None:
     vẫn phải là REPLACES như quy tắc gốc — chỉ câu có cụm từng-phần mới đổi AMENDS."""
     rel = extract_title_relations(
         "Quyết định bãi bỏ Chỉ thị số 05/2010/CT-BGDDT", "10/2024/QD-BGDDT")
-    assert rel == [("ThayThe", "REPLACES", "05/2010/CT-BGDDT")]
+    assert rel == [("BaiBoToanBo", "REPLACES", "05/2010/CT-BGDDT")]
 
 
 def test_dong_tu_som_nhat_quyet_dinh_ca_cau_khong_phai_sua_luon_thang() -> None:
@@ -147,8 +195,8 @@ def test_dong_tu_som_nhat_quyet_dinh_ca_cau_khong_phai_sua_luon_thang() -> None:
     )
     rel = extract_final_clause_relations(text, "19/2016/TT-BKHCN")
     assert set(rel) == {
-        ("ThayThe", "REPLACES", "19/2013/TT-BKHCN"),
-        ("ThayThe", "REPLACES", "17/2014/TT-BKHCN"),
+        ("BaiBoToanBo", "REPLACES", "19/2013/TT-BKHCN"),
+        ("BaiBoToanBo", "REPLACES", "17/2014/TT-BKHCN"),
     }
 
 
@@ -221,3 +269,96 @@ def test_html_to_text_giu_lien_mach_so_hieu_bi_tag_chen_giua() -> None:
     html = "<p>Căn cứ Luật số 29/2013/QH<em>1</em><em>3</em> ngày 18 tháng 6 năm 2013;</p>"
     text = html_to_text(html)
     assert "29/2013/QH13" in text
+
+
+class _FakeNeo:
+    """Giả `Neo4jClient.run()` — trả sẵn `rows` bất kể câu Cypher, đủ để test
+    `_resolve_ten_luat` không cần Neo4j thật (rule.md §5.4)."""
+
+    def __init__(self, rows: list[dict]) -> None:
+        self._rows = rows
+
+    def run(self, cypher: str, **params):
+        return self._rows
+
+
+class _NgayBanHanh:
+    """Giả `neo4j.time.Date` — chỉ cần 3 thuộc tính year/month/day mà
+    `_resolve_ten_luat` đọc, không cần phụ thuộc `neo4j` thật trong test."""
+
+    def __init__(self, y: int, m: int, d: int) -> None:
+        self.year, self.month, self.day = y, m, d
+
+
+def test_resolve_ten_luat_khop_dung_1_thi_lay(  # ca thật 2026-08-23: user phát hiện
+) -> None:
+    """Đúng 1 kết quả khớp tiêu đề -> lấy thẳng, không cần ngày."""
+    neo = _FakeNeo([{"so_hieu": "63/2025/QH15", "ngay_ban_hanh": _NgayBanHanh(2025, 2, 18)}])
+    assert _resolve_ten_luat(neo, "Luật Tổ chức Chính phủ") == "63/2025/QH15"
+
+
+def test_resolve_ten_luat_mo_ho_khong_ngay_thi_bo() -> None:
+    """Nhiều kết quả khớp tên, không có ngày để phân biệt -> bỏ, KHÔNG đoán đại."""
+    neo = _FakeNeo([
+        {"so_hieu": "76/2015/QH13", "ngay_ban_hanh": _NgayBanHanh(2015, 6, 19)},
+        {"so_hieu": "63/2025/QH15", "ngay_ban_hanh": _NgayBanHanh(2025, 2, 18)},
+    ])
+    assert _resolve_ten_luat(neo, "Luật Tổ chức Chính phủ") is None
+
+
+def test_resolve_ten_luat_mo_ho_co_ngay_khop_dung_1_thi_lay() -> None:
+    """Nhiều kết quả khớp tên, nhưng chỉ 1 khớp đúng ngày ban hành -> lấy được."""
+    neo = _FakeNeo([
+        {"so_hieu": "76/2015/QH13", "ngay_ban_hanh": _NgayBanHanh(2015, 6, 19)},
+        {"so_hieu": "63/2025/QH15", "ngay_ban_hanh": _NgayBanHanh(2025, 2, 18)},
+    ])
+    assert _resolve_ten_luat(neo, "Luật Tổ chức Chính phủ", "18/02/2025") == "63/2025/QH15"
+
+
+def test_resolve_ten_luat_khong_khop_thi_bo() -> None:
+    neo = _FakeNeo([])
+    assert _resolve_ten_luat(neo, "Luật Không Tồn Tại") is None
+
+
+def test_resolve_ten_luat_hien_phap_loai_tru_khong_tra() -> None:
+    """Hiến pháp không phải Norm tham gia REPLACES/AMENDS/GUIDED_BY -> loại trừ hẳn,
+    không gọi Neo4j (rule.md §5.4 nhóm 2)."""
+    class _NeoNoQuery:
+        def run(self, *a, **kw):
+            raise AssertionError("không được gọi Neo4j cho Hiến pháp")
+    assert _resolve_ten_luat(_NeoNoQuery(), "Hiến pháp nước CHXHCN Việt Nam") is None
+
+
+def test_resolve_ten_luat_neo_none_thi_bo_khong_loi() -> None:
+    """Không truyền `neo` (hành vi cũ, backward-compat) -> bỏ êm, không raise."""
+    assert _resolve_ten_luat(None, "Luật Tổ chức Chính phủ") is None
+
+
+class _FakeLLM:
+    def __init__(self, data: dict) -> None:
+        self._data = data
+
+    def chat_json(self, system, user, temperature=0.0, max_tokens=800):
+        return self._data
+
+
+def test_extract_references_llm_ten_luat_duoc_resolve_qua_neo() -> None:
+    """CanCu không có target (LLM không thấy số hiệu) nhưng có ten_luat+ngay -> tra
+    ngược ra so_hieu qua Neo4j, vẫn tạo được cạnh GUIDED_BY (rule.md §5.4)."""
+    llm = _FakeLLM({"refs": [
+        {"target": "", "ten_luat": "Luật Tổ chức Chính phủ", "ngay": "18/02/2025",
+         "loai": "CanCu", "confidence": 0.6},
+    ]})
+    neo = _FakeNeo([{"so_hieu": "63/2025/QH15", "ngay_ban_hanh": _NgayBanHanh(2025, 2, 18)}])
+    out = extract_references_llm(llm, "VB test", "Căn cứ Luật Tổ chức Chính phủ...", "01/NQ-CP", neo=neo)
+    assert out == [("CanCu", "GUIDED_BY", "63/2025/QH15")]
+
+
+def test_extract_references_llm_ten_luat_khong_resolve_duoc_thi_bo_qua() -> None:
+    """Không truyền `neo` -> ca ten_luat-only bị bỏ (không tạo cạnh sai/thiếu)."""
+    llm = _FakeLLM({"refs": [
+        {"target": "", "ten_luat": "Luật Tổ chức Chính phủ", "ngay": "18/02/2025",
+         "loai": "CanCu", "confidence": 0.6},
+    ]})
+    out = extract_references_llm(llm, "VB test", "Căn cứ Luật Tổ chức Chính phủ...", "01/NQ-CP")
+    assert out == []

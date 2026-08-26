@@ -67,7 +67,13 @@ class LLM:
             )
             return json.loads(r.choices[0].message.content)
         except Exception:
-            # fallback: parse JSON từ text thường
-            txt = self.chat(system + "\nCHỈ trả JSON hợp lệ.", user, temperature, max_tokens)
-            a, b = txt.find("{"), txt.rfind("}")
-            return json.loads(txt[a:b + 1]) if a >= 0 else {}
+            # fallback: parse JSON từ text thường. Nếu response bị cắt cụt (hết
+            # max_tokens giữa chừng — hay gặp với VB có nhiều quan hệ) thì JSON vẫn
+            # có thể hỏng ở đây — KHÔNG raise nữa (từng làm sập cả batch xử lý song
+            # song, xem rule.md mục 9.2), coi như "không trích được gì" cho lượt này.
+            try:
+                txt = self.chat(system + "\nCHỈ trả JSON hợp lệ.", user, temperature, max_tokens)
+                a, b = txt.find("{"), txt.rfind("}")
+                return json.loads(txt[a:b + 1]) if a >= 0 else {}
+            except Exception:
+                return {}

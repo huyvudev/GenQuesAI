@@ -1,0 +1,15 @@
+Q1 [single_hop] Tu choi/khong tim thay - chatbot noi khong co du lieu Nghi quyet 10/2015/NQ-HDND. Dap an chuan: Tra Vinh.
+Q2 [single_hop] DUNG - chatbot tra loi chinh xac "Cuc Cong nghe thong tin", trich dan dung Dieu 15 TT 18/2025/TT-NHNN.
+Q3 [single_hop] Tu choi/khong tim thay - khong co du lieu Nghi dinh 87/2002/ND-CP. Dap an chuan: dieu kien tai Dieu 6.
+Q4 [single_hop] DUNG - "Dieu 2" chinh xac, con them canh bao TT nay het hieu luc 01/05/2026 (bonus tot).
+Q5 [structural_multihop] Tu choi/khong tim thay - khong co du lieu Nghi dinh 51/1999/ND-CP. Dap an chuan: 11 nam.
+Q6 [structural_multihop] Tu choi/khong tim thay - khong co du lieu Phap lenh Trong tai kinh te.
+Q7 [structural_multihop] DUNG (ket luan dung: khong hop phap, ly do dung) - nhung trich dan Dieu 632 BLDS 2015, khac so Dieu 654/656 trong dap an chuan cua he thong minh (co the do 2 nguon danh so Dieu khac nhau/khac ban) - dang chu y.
+Q8 [structural_multihop] DUNG - "khong phai thu ly giai quyet" dung khop, giai thich ro dung Dieu 27+11.
+Q9 [validity_change] Tu choi/khong tim thay - khong co du lieu QD 207/2004 va 136/2008.
+Q10 [validity_change] Tu choi (trung thuc) - khong tim thay ma hang 2710.19.11/12 trong du lieu hien co de so sanh QD 141/2002, chi dua duoc so lieu thue hien hanh khong lien quan.
+Q11 [validity_change] Tu choi (trung thuc) - khong tim thay du lieu TT 113/2017/TT-BTC ve muc phi cu the.
+Q13 [adversarial] DUNG (khong mac bay) - chatbot ket luan "sai hoac chua chinh xac" khi hoi ve "toan bo", ngu y dung la "mot phan" - khop dung gia_tri_goc.
+Q14 [adversarial] Tu choi (khong mac bay, khong doan bua) - khong co du lieu QD 4790/QD-UB.
+Q17 [validity_trap] MOT PHAN DUNG - co nhac toi thay doi quy dinh theo thoi gian (TT 01/2022/TT-BCT sua thu tuc) nhung KHONG canh bao ro TT 47/2014 da HET HIEU LUC hoan toan tu 18/10/2018 nhu dap an chuan - tra loi nhu quy dinh van con dung duoc, chi doi thu tuc.
+Q19 [validity_trap] MOT PHAN DUNG (hanh vi tot) - noi RO khong co du lieu ve chinh TT 89/2015 duoc hoi (trung thuc, khong bia), nhung lai tu dong cung cap thong tin theo van ban THAY THE moi (TT 55/2024/TT-BGTVT, co hieu luc tu 01/01/2025) voi cung dap an "Cuc Dang kiem Viet Nam" - khong khang dinh nham day la cau tra loi cho TT 89/2015 cu.
