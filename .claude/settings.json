@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(source \"C:/Users/Huy/.venv/Chatbot-Law/Scripts/activate\")",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "Bash(tasklist)",
+      "mcp__claude-in-chrome__get_page_text",
+      "Bash(git check-ignore *)",
+      "mcp__claude-in-chrome__tabs_close_mcp",
+      "Bash(nvidia-smi)",
+      "Bash(nslookup *)",
+      "Bash(docker compose config *)",
+      "mcp__claude-in-chrome__find"
+    ]
+  }
+}

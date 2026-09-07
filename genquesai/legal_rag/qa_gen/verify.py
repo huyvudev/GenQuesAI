@@ -45,8 +45,14 @@ def _map_limit(fn, items, workers: int) -> list:
 
 
 def vong_1_omission(llm, rows: list[dict], workers: int = 8) -> tuple[list[dict], dict]:
-    """Áp cho 2 loại 2-ngữ-cảnh: structural_multihop, validity_change."""
-    can_cham = [(i, r) for i, r in enumerate(rows) if r["type"] in ("structural_multihop", "validity_change")]
+    """Áp cho 4 loại 2-ngữ-cảnh: structural_multihop, validity_change,
+    cross_norm_guidance (multi-hop liên văn bản, thêm 2026-09-04), cross_field_multihop
+    (multi-hop liên NGÀNH luật, thêm 2026-09-05 — bar SINH đã nới thành "cần cả 2 để
+    đầy đủ" thay vì "bắt buộc mới trả lời được", nhưng vòng kiểm tra độc lập này GIỮ
+    NGUYÊN câu hỏi gốc để chặn tiếp ca thực ra chỉ cần 1 bên)."""
+    can_cham = [(i, r) for i, r in enumerate(rows)
+               if r["type"] in ("structural_multihop", "validity_change", "cross_norm_guidance",
+                                "cross_field_multihop")]
     if not can_cham:
         return rows, {"omission_checked": 0, "omission_drop": 0}
 
@@ -83,7 +89,7 @@ def vong_2_hieu_luc(rows: list[dict]) -> tuple[list[dict], dict]:
             if not (m.get("gia_tri_cu") and m.get("gia_tri_moi")):
                 n_drop += 1
                 continue
-        elif r["type"] == "structural_multihop":
+        elif r["type"] in ("structural_multihop", "cross_norm_guidance", "cross_field_multihop"):
             trang_thai = r.get("validity_status_at_generation", [])
             if any(not t.get("con_hieu_luc", True) for t in trang_thai):
                 n_drop += 1
@@ -93,8 +99,10 @@ def vong_2_hieu_luc(rows: list[dict]) -> tuple[list[dict], dict]:
 
 
 def cham_bay_hieu_luc(llm, rows: list[dict], workers: int = 8) -> tuple[list[dict], dict]:
-    """Riêng cho validity_trap: đáp án PHẢI có cảnh báo hết hiệu lực."""
-    can_cham = [(i, r) for i, r in enumerate(rows) if r["type"] == "validity_trap"]
+    """Riêng cho validity_trap + partial_repeal: đáp án PHẢI có cảnh báo hết hiệu
+    lực (partial_repeal thêm vào 2026-09-04 — cùng thất bại mode: đáp án bỏ sót
+    cảnh báo phần đã bị bãi bỏ, coi như còn nguyên hiệu lực)."""
+    can_cham = [(i, r) for i, r in enumerate(rows) if r["type"] in ("validity_trap", "partial_repeal")]
     if not can_cham:
         return rows, {"bay_checked": 0, "bay_drop": 0}
 

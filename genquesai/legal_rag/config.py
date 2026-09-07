@@ -87,6 +87,26 @@ class Settings(BaseSettings):
     llm_model: str = "llama-3.3-70b-versatile"
     llm_api_key: str = ""              # LLM_API_KEY
     llm_base_url: str = ""             # tự suy theo provider nếu để trống
+
+    # LLM thứ 2 — CHỈ dùng ở Bước 3 (qa_gen/verify.py: omission-test, bẫy hiệu lực,
+    # answerability), KHÔNG dùng để sinh câu hỏi (Bước 2). Model tự sinh + tự chấm bài
+    # mình dễ bỏ sót lỗi hệ thống của chính nó — dùng model KHÁC (mặc định Grok/xAI)
+    # làm người kiểm tra độc lập, đúng tinh thần "đa nguồn đồng thuận" đã dùng cho
+    # phân loại cạnh REPLACES/AMENDS/GUIDED_BY. Để trống verify_llm_api_key -> qa_gen
+    # tự rơi về dùng lại LLM sinh (llm_provider/model/api_key) làm người kiểm tra luôn.
+    verify_llm_provider: str = "groq"
+    verify_llm_model: str = "openai/gpt-oss-120b"  # llama-3.3-70b-versatile bị Groq deprecate
+    verify_llm_api_key: str = ""       # VERIFY_LLM_API_KEY
+    verify_llm_base_url: str = ""
+
+    # LLM thứ 2 riêng cho việc RÀ SOÁT LẠI CẠNH REPLACES/AMENDS/GUIDED_BY (2026-09-07,
+    # script riêng ngoài qa_gen — 2 model tự phân loại độc lập rồi so sánh, không dùng
+    # regex/metadata). KHÔNG dùng chung với verify_llm_* (verify_llm_* dành riêng cho
+    # Bước 3 qa_gen — Groq — giữ nguyên theo yêu cầu user).
+    audit_llm_provider: str = "gemini"
+    audit_llm_model: str = "gemini-2.5-flash"
+    audit_llm_api_key: str = ""        # AUDIT_LLM_API_KEY
+    audit_llm_base_url: str = ""
     # Trần token ĐẦU RA khi synthesize. 1200 quá thấp -> câu trả lời nhiều mục (vd ~15 trách
     # nhiệm) bị CẮT CỤT giữa chừng. Tiếng Việt tốn token hơn -> để rộng cho câu có bố cục dài.
     # DeepSeek V4 reasoning được TẮT (reasoning_effort=none trong llm.py) → dùng như chat thường,
@@ -107,6 +127,7 @@ class Settings(BaseSettings):
             "openai": "https://api.openai.com/v1",
             "anthropic": "https://api.anthropic.com/v1/",  # lớp tương thích OpenAI của Anthropic
             "deepseek": "https://api.deepseek.com",        # OpenAI-compatible (SDK tự nối /chat/completions)
+            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",  # lớp tương thích OpenAI
         }.get(self.llm_provider, "https://api.groq.com/openai/v1")
 
 

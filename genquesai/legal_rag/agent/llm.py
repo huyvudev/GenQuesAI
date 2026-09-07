@@ -16,7 +16,16 @@ class LLM:
         self._client = OpenAI(api_key=s.llm_api_key, base_url=s.llm_endpoint)
         # DeepSeek V4 (flash/pro) là REASONING model → mặc định "suy nghĩ" tốn 3-6k token trước
         # câu trả lời (dễ rỗng + rất chậm). TẮT reasoning để dùng như model chat thường (nhanh).
-        self._extra = {"reasoning_effort": "none"} if self.provider == "deepseek" else {}
+        if self.provider == "deepseek":
+            self._extra = {"reasoning_effort": "none"}
+        elif self.provider == "gemini":
+            # Gemini 2.5 mặc định BẬT "thinking" (suy luận ẩn) — đo thực tế 2026-09-07:
+            # max_tokens=20 chỉ đủ cho thinking, content trả về None. TẮT bằng thinking_budget=0
+            # (cú pháp lớp tương thích OpenAI của Google: field JSON tên "extra_body" LỒNG bên
+            # trong extra_body của request, không phải extra_body phẳng như deepseek).
+            self._extra = {"extra_body": {"google": {"thinking_config": {"thinking_budget": 0}}}}
+        else:
+            self._extra = {}
 
     def _create(self, **kw):
         """Gọi có retry/backoff khi rate-limit (429) hoặc lỗi tạm thời — cho batch lớn."""

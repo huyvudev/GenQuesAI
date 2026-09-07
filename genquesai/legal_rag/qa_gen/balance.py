@@ -11,6 +11,8 @@ from .verify import vong_1_omission, vong_2_hieu_luc, cham_bay_hieu_luc
 _LOAI_KEY = {
     "single_hop": "mot_buoc", "structural_multihop": "cau_truc",
     "validity_change": "hieu_luc", "adversarial": "gai_bay", "validity_trap": "bay_hieu_luc",
+    "partial_repeal": "bai_bo_tung_phan", "cross_norm_guidance": "huong_dan_lien_vb",
+    "transitional_provision": "chuyen_tiep", "cross_field_multihop": "lien_nganh",
 }
 
 TVD_ACCEPT = 0.08
@@ -32,19 +34,30 @@ def phan_phoi_thuc_te(rows: list[dict]) -> dict:
     return {k: v / tong for k, v in dem.items()}
 
 
-def _cham_1_vong(llm, rows: list[dict], workers: int) -> list[dict]:
-    rows, _ = vong_1_omission(llm, rows, workers)
+def _cham_1_vong(llm_verify, rows: list[dict], workers: int) -> list[dict]:
+    """`llm_verify`: model CHẤM (kiểm tra chéo, có thể khác model đã sinh — xem
+    thảo luận 2026-09-05, config.py::verify_llm_*)."""
+    rows, _ = vong_1_omission(llm_verify, rows, workers)
     rows, _ = vong_2_hieu_luc(rows)
-    rows, _ = cham_bay_hieu_luc(llm, rows, workers)
+    rows, _ = cham_bay_hieu_luc(llm_verify, rows, workers)
     return rows
 
 
 def can_bang(llm, bang: BangDuLieu, ke_hoach: KeHoach, rows_ban_dau: list[dict],
-            tong_muc_tieu: int, rng: random.Random, workers: int = 8) -> tuple[list[dict], list[dict]]:
+            tong_muc_tieu: int, rng: random.Random, workers: int = 8,
+            qdrant_store=None, qdrant_collection: str | None = None, embedder=None,
+            llm_verify=None) -> tuple[list[dict], list[dict]]:
+    """`llm`: model SINH (dùng cho lượt sinh bù). `llm_verify`: model CHẤM lượt bù
+    (mặc định = `llm` nếu để None — xem qa_gen/run.py cách dựng model thứ 2)."""
+    llm_verify = llm_verify or llm
     target = {
         "single_hop": ke_hoach.ty_le_mot_buoc, "structural_multihop": ke_hoach.ty_le_cau_truc,
         "validity_change": ke_hoach.ty_le_hieu_luc, "adversarial": ke_hoach.ty_le_gai_bay,
         "validity_trap": ke_hoach.ty_le_bay_hieu_luc,
+        "partial_repeal": ke_hoach.ty_le_bai_bo_tung_phan,
+        "cross_norm_guidance": ke_hoach.ty_le_huong_dan_lien_vb,
+        "transitional_provision": ke_hoach.ty_le_chuyen_tiep,
+        "cross_field_multihop": ke_hoach.ty_le_lien_nganh,
     }
     rows = list(rows_ban_dau)
     history = []
@@ -63,8 +76,10 @@ def can_bang(llm, bang: BangDuLieu, ke_hoach: KeHoach, rows_ban_dau: list[dict],
         if tong_thieu == 0:
             break
         so_luong_bu = {_LOAI_KEY[t]: n for t, n in thieu.items()}
-        bu_rows, _ = sinh_de(llm, bang, so_luong_bu, rng, workers)
-        bu_rows = _cham_1_vong(llm, bu_rows, workers)
+        bu_rows, _ = sinh_de(llm, bang, so_luong_bu, rng, workers,
+                             qdrant_store=qdrant_store, qdrant_collection=qdrant_collection,
+                             embedder=embedder)
+        bu_rows = _cham_1_vong(llm_verify, bu_rows, workers)
         if len(bu_rows) < tong_thieu * 0.10:
             rows += bu_rows
             break

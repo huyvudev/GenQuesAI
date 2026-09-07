@@ -45,11 +45,22 @@ def _progress(msg: str) -> None:
 
 
 def build_local_file_index(corpus_dir: Path) -> dict[str, Path]:
-    """norm_id -> thu muc chua doc.json+toanvan.html, quet toan bo CORPUS_DIR/*/*."""
+    """norm_id -> thu muc chua doc.json+toanvan.html, quet toan bo CORPUS_DIR/*/*.
+
+    Mot norm_id co the xuat hien o NHIEU thu muc con (most/tw/mic/related/
+    cdi_backfill/manual...) — uu tien thu muc co toanvan.html DAI NHAT (thay vi
+    thu muc quet SAU CUNG thang, nhu code cu) de tranh ban rong ghi de ban co
+    noi dung that (bug phat hien 2026-09-04, gay 127/284 VB bi coi la "rong")."""
     idx: dict[str, Path] = {}
+    best_size: dict[str, int] = {}
     for p in corpus_dir.glob("*/*/doc.json"):
         d = p.parent
-        if (d / "toanvan.html").exists():
+        html = d / "toanvan.html"
+        if not html.exists():
+            continue
+        sz = html.stat().st_size
+        if sz > best_size.get(d.name, -1):
+            best_size[d.name] = sz
             idx[d.name] = d
     return idx
 

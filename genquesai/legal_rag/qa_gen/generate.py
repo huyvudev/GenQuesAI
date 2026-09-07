@@ -10,9 +10,11 @@ import random
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from .data import BangDuLieu, Dieu, toan_van_vb, parent_path, validity_status
+from .data import (BangDuLieu, BaiBoTungPhan, Dieu, DieuKhoanChuyenTiep, KichBanLienNganh,
+                   toan_van_vb, parent_path, validity_status)
 from .prompts import (P_MOT_BUOC, P_CAU_TRUC, P_THAY_DOI_HIEU_LUC, P_GAI_BAY,
-                      P_BAY_HIEU_LUC, breadcrumb)
+                      P_BAY_HIEU_LUC, P_BAI_BO_TUNG_PHAN, P_HUONG_DAN_LIEN_VB,
+                      P_CHUYEN_TIEP, P_LIEN_NGANH, breadcrumb)
 
 _SYS = "Bạn là chuyên gia ra đề QA cho benchmark RAG pháp luật Việt Nam. Chỉ trả JSON hợp lệ, không giải thích thêm."
 
@@ -101,6 +103,116 @@ def _gen_bay_hieu_luc(llm, cu: Dieu) -> dict | None:
            "meta": {"ngay_het_hl": str(cu.hieu_luc_den)}}
 
 
+def _gen_bai_bo_tung_phan(llm, item: BaiBoTungPhan) -> dict | None:
+    out = llm.chat_json(_SYS, P_BAI_BO_TUNG_PHAN.format(
+        breadcrumb_phan=breadcrumb(item.dieu_cha.so_hieu, item.duong_dan),
+        ngay_het_hl=item.ngay_het_hl,
+        breadcrumb_dieu=breadcrumb(item.dieu_cha.so_hieu, item.dieu_cha.duong_dan),
+        ctx_phan=item.text[:2000], ctx_dieu=item.dieu_cha.text[:2500]),
+        temperature=0.4, max_tokens=500)
+    if not out or "question" not in out or "answer" not in out:
+        return None
+    return {"question": out["question"], "answer": out["answer"],
+           "contexts": [item.text, item.dieu_cha.text],
+           "type": "partial_repeal", "source_comp_ids": [item.comp_id, item.dieu_cha.comp_id],
+           **_meta_chung(item.dieu_cha),
+           "meta": {"phan_bi_bai_bo": item.duong_dan, "ngay_het_hl_phan": str(item.ngay_het_hl)}}
+
+
+def _gen_huong_dan_lien_vb(llm, bang: BangDuLieu, a: Dieu, norm_b: str, so_hieu_b: str) -> dict | None:
+    tv_b = toan_van_vb(bang, norm_b)
+    if not tv_b:
+        return None
+    out = llm.chat_json(_SYS, P_HUONG_DAN_LIEN_VB.format(
+        breadcrumb_a=breadcrumb(a.so_hieu, a.duong_dan), ctx_a=a.text[:2000],
+        so_hieu_b=so_hieu_b, toan_van_b=tv_b), temperature=0.3, max_tokens=900)
+    if not out or not out.get("tim_thay"):
+        return None
+    needed = {"question", "answer", "doan_b_tim_duoc", "fact_chi_co_a", "fact_chi_co_b", "buoc_1", "buoc_2"}
+    if not needed <= out.keys() or not out["doan_b_tim_duoc"]:
+        return None
+    return {"question": out["question"], "answer": out["answer"],
+           "contexts": [a.text, out["doan_b_tim_duoc"]],
+           "type": "cross_norm_guidance", "source_comp_ids": [a.comp_id],
+           "bridge_relation": "GUIDED_BY", **_meta_chung(a),
+           "meta": {"vb_huong_dan": so_hieu_b, "doan_b_tim_duoc": out["doan_b_tim_duoc"],
+                    "fact_chi_co_a": out["fact_chi_co_a"], "fact_chi_co_b": out["fact_chi_co_b"],
+                    "buoc_1": out["buoc_1"], "buoc_2": out["buoc_2"]}}
+
+
+def _gen_chuyen_tiep(llm, item: DieuKhoanChuyenTiep) -> dict | None:
+    out = llm.chat_json(_SYS, P_CHUYEN_TIEP.format(
+        breadcrumb=f"{item.so_hieu} — {item.nguon_dieu_khoan}",
+        dieu_kien=item.dieu_kien, van_ban_ap_dung=item.van_ban_ap_dung,
+        ctx=item.dieu_kien_raw[:1500]), temperature=0.4, max_tokens=500)
+    if not out or "question" not in out or "answer" not in out:
+        return None
+    return {"question": out["question"], "answer": out["answer"],
+           "contexts": [item.dieu_kien_raw],
+           "type": "transitional_provision", "source_comp_ids": [item.rule_id],
+           "parent_path": [[item.so_hieu, item.nguon_dieu_khoan]],
+           "meta": {"dieu_kien": item.dieu_kien, "van_ban_ap_dung": item.van_ban_ap_dung}}
+
+
+def _ung_vien_lien_nganh(qdrant_store, collection: str, vec, norm_id: str, k: int) -> list:
+    """Tìm k Điều gần bối cảnh nhất TRONG 1 norm_id cụ thể (đã lọc còn hiệu lực) —
+    dùng chính vector bối cảnh (embed 1 lần/kịch bản), không cần biết trước Điều nào."""
+    from qdrant_client import models as qm
+    filt = qm.Filter(must=[
+        qm.FieldCondition(key="norm_id", match=qm.MatchValue(value=norm_id)),
+        qm.FieldCondition(key="part", match=qm.MatchValue(value=0)),
+        qm.IsNullCondition(is_null=qm.PayloadField(key="hieu_luc_den")),
+    ])
+    return qdrant_store.query_points(collection, query=vec, using="dense",
+                                     query_filter=filt, limit=k, with_payload=True).points
+
+
+def _pp_payload(p: dict) -> list[str]:
+    dd = (p.get("duong_dan") or "").replace("Dieu", "Điều").replace("Khoan", "Khoản").replace("Diem", "Điểm")
+    return [p["so_hieu"]] + [x.strip() for x in dd.split(">")]
+
+
+def _gen_lien_nganh(llm, qdrant_store, collection: str, embedder, kb: KichBanLienNganh,
+                    so_ung_vien: int = 3) -> dict | None:
+    """Thử lần lượt các cặp (Điều gần bối cảnh nhất trong luật A) x (...trong luật B),
+    dừng ở cặp ĐẦU TIÊN LLM tự nhận thật sự liên quan (P_LIEN_NGANH tự thẩm định trước
+    khi viết) — không cần biết trước Điều nào đúng, cũng không cần người duyệt kịch
+    bản (kịch bản khớp sai chỉ khiến MỌI cặp đều bị từ chối ở đây, không gây hại)."""
+    dense, _ = embedder.encode([kb.boi_canh])
+    vec = dense[0].tolist()
+    ung_vien_a = _ung_vien_lien_nganh(qdrant_store, collection, vec, kb.norm_a, so_ung_vien)
+    ung_vien_b = _ung_vien_lien_nganh(qdrant_store, collection, vec, kb.norm_b, so_ung_vien)
+    if not ung_vien_a or not ung_vien_b:
+        return None
+    for pa_pt in ung_vien_a:
+        pa = pa_pt.payload
+        for pb_pt in ung_vien_b:
+            pb = pb_pt.payload
+            out = llm.chat_json(_SYS, P_LIEN_NGANH.format(
+                boi_canh=kb.boi_canh, so_hieu_a=pa["so_hieu"], so_hieu_b=pb["so_hieu"],
+                breadcrumb_a=breadcrumb(pa["so_hieu"], pa["duong_dan"]), ctx_a=pa["text"][:2000],
+                breadcrumb_b=breadcrumb(pb["so_hieu"], pb["duong_dan"]), ctx_b=pb["text"][:2000]),
+                temperature=0.4, max_tokens=700)
+            if not out or not out.get("lien_quan"):
+                continue
+            needed = {"question", "answer", "fact_chi_co_a", "fact_chi_co_b", "buoc_1", "buoc_2"}
+            if not needed <= out.keys():
+                continue
+            return {"question": out["question"], "answer": out["answer"],
+                   "contexts": [pa["text"], pb["text"]],
+                   "type": "cross_field_multihop",
+                   "source_comp_ids": [pa["comp_id"], pb["comp_id"]],
+                   "bridge_relation": "SCENARIO_SEED",
+                   "parent_path": [_pp_payload(pa), _pp_payload(pb)],
+                   "validity_status_at_generation": [
+                       {"con_hieu_luc": True, "hieu_luc_tu": pa.get("hieu_luc_tu"), "hieu_luc_den": None},
+                       {"con_hieu_luc": True, "hieu_luc_tu": pb.get("hieu_luc_tu"), "hieu_luc_den": None}],
+                   "meta": {"boi_canh": kb.boi_canh, "fact_chi_co_a": out["fact_chi_co_a"],
+                            "fact_chi_co_b": out["fact_chi_co_b"], "buoc_1": out["buoc_1"],
+                            "buoc_2": out["buoc_2"]}}
+    return None
+
+
 def _map_limit(fn, items, workers: int) -> list:
     if not items:
         return []
@@ -109,8 +221,15 @@ def _map_limit(fn, items, workers: int) -> list:
 
 
 def sinh_de(llm, bang: BangDuLieu, so_luong: dict[str, int], rng: random.Random,
-           workers: int = 8) -> tuple[list[dict], dict]:
-    """`so_luong`: {'mot_buoc':N, 'cau_truc':N, 'hieu_luc':N, 'gai_bay':N, 'bay_hieu_luc':N}."""
+           workers: int = 8, qdrant_store=None, qdrant_collection: str | None = None,
+           embedder=None) -> tuple[list[dict], dict]:
+    """`so_luong`: {'mot_buoc':N, 'cau_truc':N, 'hieu_luc':N, 'gai_bay':N, 'bay_hieu_luc':N,
+    'bai_bo_tung_phan':N, 'huong_dan_lien_vb':N, 'chuyen_tiep':N, 'lien_nganh':N}.
+
+    `qdrant_store`/`qdrant_collection`/`embedder`: CHỈ cần cho loại `lien_nganh` (cần
+    embed trực tiếp bối cảnh — model bge-m3 thật, gói `FlagEmbedding`+`torch`, KHÔNG
+    có sẵn trong mọi môi trường chạy pipeline này). Để `None` (mặc định) -> bỏ qua loại
+    này êm, không lỗi — các loại khác không bị ảnh hưởng."""
     rows: list[dict] = []
     diag: dict[str, int] = {}
     dieu_list = list(bang.dieu.values())
@@ -182,5 +301,65 @@ def sinh_de(llm, bang: BangDuLieu, so_luong: dict[str, int], rng: random.Random,
     for out in _map_limit(lambda d: _gen_bay_hieu_luc(llm, d), chon, workers):
         if out: rows.append(out)
     diag["bay_hieu_luc_ok"] = sum(1 for r in rows if r["type"] == "validity_trap")
+
+    # 6. Bãi bỏ từng phần (Khoan/Diem bi bai bo, Dieu cha van con hieu luc — pool
+    # NHO co dinh toan corpus, khac cac loai tren khong scale theo tong_dieu).
+    ung_vien_bbtp = list(bang.bai_bo_tung_phan)
+    rng.shuffle(ung_vien_bbtp)
+    n = min(so_luong.get("bai_bo_tung_phan", 0), len(ung_vien_bbtp))
+    chon = ung_vien_bbtp[:n]
+    for out in _map_limit(lambda item: _gen_bai_bo_tung_phan(llm, item), chon, workers):
+        if out: rows.append(out)
+    diag["bai_bo_tung_phan_ok"] = sum(1 for r in rows if r["type"] == "partial_repeal")
+
+    # 7. Multi-hop LIÊN VĂN BẢN (GUIDED_BY): chọn ngẫu nhiên 1 cặp (A được hướng dẫn,
+    # B hướng dẫn) rồi 1 Điều ngẫu nhiên của A. Over-provision RẤT MẠNH — đo thực tế
+    # 2026-09-04: yield chỉ ~5-8% SAU vòng 1+2 (thấp hơn hẳn hiệu_lực ~25%, vì đây là
+    # tìm 1 đoạn cụ thể trong TOÀN VĂN B mà không biết trước B có nhắc Điều A hay
+    # không — phần lớn Điều A ngẫu nhiên không được B hướng dẫn cụ thể). Hàm tự biết
+    # pass/fail (trả None) nên dùng được pattern "dừng sớm khi đủ".
+    dieu_theo_norm: dict[str, list[Dieu]] = {}
+    for d in con_hieu_luc_list:
+        dieu_theo_norm.setdefault(d.norm_id, []).append(d)
+    ung_vien_hdlv = list(bang.huong_dan_lien_vb)
+    rng.shuffle(ung_vien_hdlv)
+    n_target = so_luong.get("huong_dan_lien_vb", 0)
+    over_hdlv = max(1, int(round(n_target * 15)))
+    chon_cap = ung_vien_hdlv[:min(over_hdlv, len(ung_vien_hdlv))]
+    chon = [(rng.choice(dieu_theo_norm[p.norm_a]), p.norm_b, _so_hieu_cua_norm(p.norm_b))
+           for p in chon_cap if p.norm_a in dieu_theo_norm]
+    ok = 0
+    for out in _map_limit(lambda x: _gen_huong_dan_lien_vb(llm, bang, x[0], x[1], x[2]), chon, workers):
+        if out and ok < n_target:
+            rows.append(out); ok += 1
+    diag["huong_dan_lien_vb_ok"] = ok
+
+    # 8. Điều khoản chuyển tiếp (TransitionRule, pool nhỏ cố định giống bãi_bỏ_từng_phần).
+    ung_vien_ct = list(bang.dieu_khoan_chuyen_tiep)
+    rng.shuffle(ung_vien_ct)
+    n = min(so_luong.get("chuyen_tiep", 0), len(ung_vien_ct))
+    chon = ung_vien_ct[:n]
+    for out in _map_limit(lambda item: _gen_chuyen_tiep(llm, item), chon, workers):
+        if out: rows.append(out)
+    diag["chuyen_tiep_ok"] = sum(1 for r in rows if r["type"] == "transitional_provision")
+
+    # 9. Multi-hop LIEN NGANH LUAT (kich ban do LLM de xuat rieng, xem
+    # data.py::de_xuat_kich_ban_lien_nganh). Bo qua em neu thieu qdrant_store/embedder
+    # (moi truong khong co torch+FlagEmbedding) hoac chua co kich ban nao khop duoc.
+    if qdrant_store is not None and embedder is not None and bang.kich_ban_lien_nganh:
+        ung_vien_kb = list(bang.kich_ban_lien_nganh)
+        rng.shuffle(ung_vien_kb)
+        n_target = so_luong.get("lien_nganh", 0)
+        # Da co retry noi bo (thu het to hop ung vien 2 ben trong _gen_lien_nganh) nen
+        # khong can over-provision manh nhu huong_dan_lien_vb — chi can du kich ban.
+        over = max(1, int(round(n_target * 3)))
+        chon = ung_vien_kb[:min(over, len(ung_vien_kb))]
+        ok = 0
+        for out in _map_limit(
+                lambda kb: _gen_lien_nganh(llm, qdrant_store, qdrant_collection, embedder, kb),
+                chon, workers):
+            if out and ok < n_target:
+                rows.append(out); ok += 1
+        diag["lien_nganh_ok"] = ok
 
     return rows, diag

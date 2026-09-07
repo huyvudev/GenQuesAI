@@ -1,3 +1,36 @@
+## ✅ Sửa 284 VB "rỗng" (2026-09-04) — XONG hoàn toàn
+
+Rà lại 284 VB bị coi là "rỗng" (checkpoint cũ, xem mục dưới) — phát hiện 2 nguyên
+nhân khác nhau, không phải vbpl.vn thiếu dữ liệu như tưởng ban đầu:
+
+- **127 VB**: bug trong `build_local_file_index()` (`_rebuild_full_corpus.py`) —
+  khi 1 `norm_id` xuất hiện ở NHIỀU thư mục con (`most/`, `tw/`, `mic/`, `manual/`,
+  `cdi_backfill/`...), code cũ lấy thư mục quét SAU CÙNG (thứ tự bảng chữ cái) thay
+  vì thư mục có nội dung dài nhất — 1 bản `toanvan.html` gần rỗng (~89 byte) ghi đè
+  lên bản có nội dung thật (vd 25KB). **Đã sửa** hàm (ưu tiên file dài nhất khi
+  trùng norm_id) + chạy lại `resolve_relations` riêng cho 127 VB này
+  (`_repair_127_rong.py`) — 0 lỗi.
+- **157 VB**: thật sự chưa từng crawl được nội dung từ vbpl.vn (mọi lần thử đều ra
+  trang rỗng <200 byte). Tải thủ công qua trình duyệt (tài khoản trả phí
+  thuvienphapluat.vn của user) — 155 VB ở tab "Văn bản Pháp Luật", 2 VB
+  (`7711/TC/TCT`, `7333/TC/TCT`, công văn cũ 2004) ở tab "Công văn". Lưu vào
+  `CORPUS_DIR/tvpl_backfill/<norm_id>/` (doc.json + toanvan.html), đối chiếu số
+  hiệu 100% khớp trước khi ghi (phát hiện + sửa 1 bug Unicode NFD/NFC khi trích
+  text từ trang — 1 số trang trả về tiếng Việt dạng tổ hợp, làm lệch so khớp số
+  hiệu). Chạy `resolve_relations` riêng cho 157 VB (`_repair_157_tvpl.py`) — 0 lỗi.
+
+**Kết quả**: `con lai rong = 0` (verify trực tiếp Neo4j production). Tổng Action
+tăng từ 195.189 → **197.371** (+2.182 cạnh mới từ 284 VB này). Toàn bộ 66.368 VB
+trong corpus giờ đã qua v3 thật sự hoàn chỉnh (trước đó 284 VB bị bỏ sót ngầm, không
+lộ ra vì không nằm trong số liệu "cần rà"/"đã khớp" nào).
+
+Script mới (chưa dọn, để tham khảo nếu cần chạy lại kiểu tương tự):
+`_repair_127_rong.py`, `_repair_157_tvpl.py`. Sửa 1 chỗ trong
+`_rebuild_full_corpus.py::build_local_file_index()` (đã commit vào working tree,
+CHƯA commit git).
+
+---
+
 # Tiến độ xử lý cạnh REPLACES/AMENDS/GUIDED_BY toàn corpus (v3 consensus)
 
 > File checkpoint — cập nhật liên tục trong quá trình xử lý. Đọc file này TRƯỚC khi
