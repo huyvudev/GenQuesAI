@@ -25,7 +25,9 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
 
 from neo4j import GraphDatabase
@@ -37,6 +39,11 @@ LOG_PATH = os.path.join(HERE, "rasoat_2llm_log.jsonl")
 PROGRESS_PATH = os.path.join(HERE, "rasoat_2llm_progress.log")
 
 _LOAI_HOP_LE = {"ThayThe", "SuaDoi", "BaiBoToanBo", "BaiBoTungPhan", "KhongLienQuan"}
+
+
+class ApiTamThoiLoi(Exception):
+    """1 trong 2 model goi API that bai han (khong phai loi parse JSON) — VB nay
+    KHONG duoc ghi vao checkpoint (main() se thu lai o lan chay sau)."""
 
 
 def _load_env(path: str) -> dict:
@@ -129,15 +136,25 @@ class LLMClient:
                     raise
                 time.sleep(min(2 ** attempt * 2, 60))
 
-    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict:
+    def chat_json(self, system: str, user: str, max_tokens: int = 1500) -> dict | None:
+        """Trả None khi GỌI API THẤT BẠI HẲN (het tien/mang/auth — sau 6 lan thu lai) —
+        khac voi {} khi API tra loi nhung JSON hong/rong (loi chat luong model, thu lai
+        cung khong giai quyet). Phan biet nay QUAN TRONG: main() chi danh dau VB "da xong"
+        khi ca 2 ben KHONG phai None — tranh bug that 2026-09-07 (DeepSeek het tien giua
+        chung, 4 VB bi ghi sai "da xong" du thieu hoan toan ket qua 1 ben, khong bao gio
+        duoc thu lai neu khong phat hien + xoa checkpoint thu cong)."""
         try:
             r = self._create(model=self.model, temperature=0, max_tokens=max_tokens,
                              response_format={"type": "json_object"},
                              messages=[{"role": "system", "content": system}, {"role": "user", "content": user}])
+        except Exception as e:
+            _log(f"  LOI GOI API {self.provider} (se thu lai VB nay o lan chay sau): {e!r}")
+            return None
+        try:
             content = r.choices[0].message.content
             return json.loads(content) if content else {}
         except Exception as e:
-            _log(f"  LOI goi {self.provider}: {e!r}")
+            _log(f"  LOI parse JSON {self.provider} (bo qua VB nay, khong retry): {e!r}")
             return {}
 
 
@@ -220,8 +237,11 @@ def lay_du_lieu_nguon(neo, norm_id: str) -> tuple[dict, list[dict]] | None:
     return src, targets
 
 
-def xu_ly_1_vb(neo, llm_ds, llm_gm, norm_id: str) -> dict | None:
-    data = lay_du_lieu_nguon(neo, norm_id)
+def xu_ly_1_vb(driver, llm_ds, llm_gm, norm_id: str) -> dict | None:
+    # Moi luot mo 1 session RIENG (Neo4j Session KHONG thread-safe, driver thi co —
+    # bat buoc phai the khi chay nhieu VB song song, xem main()).
+    with driver.session() as neo:
+        data = lay_du_lieu_nguon(neo, norm_id)
     if not data:
         return None
     src, targets = data
@@ -236,11 +256,17 @@ def xu_ly_1_vb(neo, llm_ds, llm_gm, norm_id: str) -> dict | None:
         _log(f"  Đang giờ cao điểm DeepSeek, chờ {cho:.0f}s...")
         time.sleep(cho + 1)
 
-    from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=2) as pool:
         f_ds = pool.submit(llm_ds.chat_json, _SYS, user_prompt, max_tok)
         f_gm = pool.submit(llm_gm.chat_json, _SYS, user_prompt, max_tok)
         out_ds, out_gm = f_ds.result(), f_gm.result()
+
+    if out_ds is None or out_gm is None:
+        # Goi API that bai han (het tien/mang/auth), KHONG PHAI loi parse JSON thong
+        # thuong -> bao loi rieng de main() KHONG ghi checkpoint (VB nay se duoc thu
+        # lai o lan chay sau, khong bi coi la "da xong" sai).
+        raise ApiTamThoiLoi(f"{'DeepSeek' if out_ds is None else ''} "
+                            f"{'Gemini' if out_gm is None else ''} goi API that bai")
 
     def _parse(out: dict) -> dict:
         m = {}
@@ -270,10 +296,44 @@ def xu_ly_1_vb(neo, llm_ds, llm_gm, norm_id: str) -> dict | None:
            "so_dich": len(targets), "ket_qua": ket_qua}
 
 
-def main(gioi_han: int | None = None) -> None:
+_GHI_LOCK = threading.Lock()
+
+
+def _xu_ly_va_ghi(driver, llm_ds, llm_gm, nid: str, dem: dict) -> None:
+    """Xu ly 1 VB + ghi checkpoint — goi tu nhieu luong song song (main()), moi luong
+    tu mo Session Neo4j rieng (xem xu_ly_1_vb). `dem` la dict dung chung {"i":0,"bd":0}
+    de dem tien do, bao ve bang _GHI_LOCK khi doc/ghi."""
+    try:
+        out = xu_ly_1_vb(driver, llm_ds, llm_gm, nid)
+    except ApiTamThoiLoi as e:
+        # KHONG ghi checkpoint -> VB nay se tu duoc thu lai o lan chay tiep theo
+        # (resume doc lai file, khong thay norm_id nay trong da_xong). Nghi 5 phut
+        # tranh hammer API vo ich neu dang mat het tien/mang that su (khong phai
+        # 1 loi thoang qua) — CHI luong nay nghi, cac luong khac van chay tiep.
+        _log(f"  {nid}: {e} — BỎ QUA, sẽ thử lại lần chạy sau. Nghỉ 300s...")
+        time.sleep(300)
+        return
+    except Exception as e:
+        _log(f"  LOI xu ly {nid}: {e!r}")
+        out = None
+
+    with _GHI_LOCK:
+        if out:
+            n_bd = sum(1 for r in out["ket_qua"] if not r["dong_thuan_2_model"])
+            dem["bd"] += n_bd
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(out, ensure_ascii=False) + "\n")
+        else:
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps({"norm_id": nid, "loi": True}, ensure_ascii=False) + "\n")
+        dem["i"] += 1
+        if dem["i"] % 50 == 0:
+            _log(f"  {dem['i']}/{dem['tong']} VB · bất đồng cộng dồn: {dem['bd']}")
+
+
+def main(gioi_han: int | None = None, workers: int = 6) -> None:
     env = _load_env(ENV_PATH)
     driver = GraphDatabase.driver(env["NEO4J_URI"], auth=(env["NEO4J_USER"], env["NEO4J_PASSWORD"]))
-    neo = driver.session()
 
     llm_ds = LLMClient("deepseek", env.get("DEEPSEEK_MODEL", "deepseek-v4-flash"),
                        env["DEEPSEEK_API_KEY"], "https://api.deepseek.com",
@@ -292,34 +352,24 @@ def main(gioi_han: int | None = None) -> None:
                     pass
     _log(f"Đã có {len(da_xong)} VB xử lý từ trước (resume)")
 
-    danh_sach = [r["norm_id"] for r in neo.run(_Q_NGUON_CAN_RA).data()]
+    with driver.session() as neo:
+        danh_sach = [r["norm_id"] for r in neo.run(_Q_NGUON_CAN_RA).data()]
     con_lai = [nid for nid in danh_sach if nid not in da_xong]
     if gioi_han:
         con_lai = con_lai[:gioi_han]
-    _log(f"Tổng {len(danh_sach)} VB nguồn cần rà, còn lại {len(con_lai)}"
+    _log(f"Tổng {len(danh_sach)} VB nguồn cần rà, còn lại {len(con_lai)} · {workers} luồng song song"
         + (f" (giới hạn test: {gioi_han})" if gioi_han else ""))
 
-    dem_bat_dong = 0
-    for i, nid in enumerate(con_lai):
-        try:
-            out = xu_ly_1_vb(neo, llm_ds, llm_gm, nid)
-        except Exception as e:
-            _log(f"  LOI xu ly {nid}: {e!r}")
-            out = None
-        if out:
-            n_bd = sum(1 for r in out["ket_qua"] if not r["dong_thuan_2_model"])
-            dem_bat_dong += n_bd
-            with open(LOG_PATH, "a", encoding="utf-8") as f:
-                f.write(json.dumps(out, ensure_ascii=False) + "\n")
-        else:
-            with open(LOG_PATH, "a", encoding="utf-8") as f:
-                f.write(json.dumps({"norm_id": nid, "loi": True}, ensure_ascii=False) + "\n")
-        if (i + 1) % 50 == 0:
-            _log(f"  {i+1}/{len(con_lai)} VB · bất đồng cộng dồn: {dem_bat_dong}")
+    dem = {"i": 0, "bd": 0, "tong": len(con_lai)}
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(_xu_ly_va_ghi, driver, llm_ds, llm_gm, nid, dem) for nid in con_lai]
+        for f in futures:
+            f.result()  # de loi (neu co, ngoai 2 loai da bat o tren) khong bi nuot am tham
 
-    _log(f"XONG toàn bộ {len(con_lai)} VB. Tổng bất đồng: {dem_bat_dong}")
+    _log(f"XONG toàn bộ {len(con_lai)} VB. Tổng bất đồng: {dem['bd']}")
 
 
 if __name__ == "__main__":
     gh = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] else None
-    main(gioi_han=gh)
+    wk = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else 6
+    main(gioi_han=gh, workers=wk)
