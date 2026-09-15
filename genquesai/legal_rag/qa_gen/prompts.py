@@ -181,28 +181,17 @@ P_CHUYEN_TIEP = (
 # Loai moi 2026-09-05: multi-hop LIEN NGANH LUAT (2 luat DOC LAP, khac linh vuc, cung
 # ap dung 1 tinh huong thuc te — vd Luat Dau tu + Luat Doanh nghiep khi thanh lap DN
 # FDI). Khac han P_CAU_TRUC/P_HUONG_DAN_LIEN_VB: khong co canh trich dan/GUIDED_BY
-# nao noi 2 luat nay — phai tu de xuat cap linh vuc (P_DE_XUAT_KICH_BAN_LIEN_NGANH,
-# goi 1 LAN cho ca luot chay) roi tu dong khop ten luat vao Neo4j (data.py::tim_luat),
-# KHONG can nguoi duyet (thu nghiem 2026-09-05: LLM de xuat + tu tham dinh lai o
-# P_LIEN_NGANH la du an toan, xem thao luan kien truc). Da do thuc te: bar "bat buoc
-# can ca 2 moi tra loi duoc" (giong P_CAU_TRUC) khien loai nay gan nhu khong ra duoc
-# cau nao (0/45 mot mach) — PHAI noi bar thanh "can ca 2 de co dap an DAY DU/CHINH
-# XAC" (van dam bao multi-hop that qua vong_1_omission o Buoc 3, chi khac muc do bat
-# buoc). Sau khi noi, do duoc ~5% yield tren cac cap domain dung flavor.
-P_DE_XUAT_KICH_BAN_LIEN_NGANH = (
-    "Liệt kê {n} tình huống pháp lý THỰC TẾ phổ biến ở Việt Nam mà khi giải quyết PHẢI kết hợp "
-    "kiến thức từ 2 NGÀNH LUẬT/LĨNH VỰC KHÁC NHAU thật sự (KHÔNG tính trường hợp 1 luật gốc + "
-    "nghị định/thông tư hướng dẫn thi hành CHÍNH luật đó — chỉ tính 2 luật ĐỘC LẬP, thuộc 2 lĩnh "
-    "vực khác nhau, cùng áp dụng cho 1 việc thực tế).\n\n"
-    "Với mỗi tình huống, ghi:\n"
-    "- boi_canh: mô tả CỤ THỂ 1-2 câu, có đủ TỪ KHOÁ CHUYÊN MÔN của cả 2 luật (không viết chung "
-    "chung) — vd 'Nhà đầu tư nước ngoài xin thuê đất để xây nhà xưởng, cần biết tỷ lệ sở hữu vốn "
-    "tối đa và thủ tục giao đất, cho thuê đất' (không viết 'doanh nghiệp thuê đất' suông).\n"
-    "- ten_luat_a / ten_luat_b: TÊN VĂN BẢN LUẬT chính thức (vd 'Luật Đầu tư', 'Bộ luật Lao động') "
-    "— phải là luật/bộ luật CẤP CAO (Quốc hội ban hành), không phải nghị định/thông tư.\n\n"
-    'Trả JSON: {{"kich_ban": [{{"boi_canh":"...","ten_luat_a":"...","ten_luat_b":"..."}}, ...]}}'
-)
-
+# nao noi 2 luat nay. Ban dau (2026-09-05) de LLM tu de xuat kich ban moi luot chay
+# (prompt P_DE_XUAT_KICH_BAN_LIEN_NGANH, da BO 2026-09-15) — LLM hay bia kich ban
+# khong khop corpus that, yield thap + ket qua khong on dinh giua cac lan chay. Thay
+# bang bo kich ban CO DINH da bien soan + kiem chung tay (data.py::KICH_BAN_LIEN_NGANH_CO_DINH),
+# roi tu dong khop ten luat vao Neo4j (data.py::tim_luat), KHONG can nguoi duyet moi
+# lan (kich ban khop sai chi khien tim_luat tra None, bi loai em, khong gay hai).
+# Da do thuc te (truoc khi bo prompt de xuat): bar "bat buoc can ca 2 moi tra loi
+# duoc" (giong P_CAU_TRUC) khien loai nay gan nhu khong ra duoc cau nao (0/45 mot
+# mach) — PHAI noi bar thanh "can ca 2 de co dap an DAY DU/CHINH XAC" (van dam bao
+# multi-hop that qua vong_1_omission o Buoc 3, chi khac muc do bat buoc). Sau khi
+# noi, do duoc ~5% yield tren cac cap domain dung flavor.
 P_LIEN_NGANH = (
     "Bạn là chuyên gia ra đề QA nhiều bước (multi-hop) LIÊN NGÀNH LUẬT cho benchmark RAG "
     "pháp luật Việt Nam.\n\n"

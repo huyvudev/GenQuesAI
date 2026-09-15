@@ -343,8 +343,8 @@ def sinh_de(llm, bang: BangDuLieu, so_luong: dict[str, int], rng: random.Random,
         if out: rows.append(out)
     diag["chuyen_tiep_ok"] = sum(1 for r in rows if r["type"] == "transitional_provision")
 
-    # 9. Multi-hop LIEN NGANH LUAT (kich ban do LLM de xuat rieng, xem
-    # data.py::de_xuat_kich_ban_lien_nganh). Bo qua em neu thieu qdrant_store/embedder
+    # 9. Multi-hop LIEN NGANH LUAT (kich ban CO DINH da kiem chung tay, xem
+    # data.py::lay_kich_ban_lien_nganh_co_dinh). Bo qua em neu thieu qdrant_store/embedder
     # (moi truong khong co torch+FlagEmbedding) hoac chua co kich ban nao khop duoc.
     if qdrant_store is not None and embedder is not None and bang.kich_ban_lien_nganh:
         ung_vien_kb = list(bang.kich_ban_lien_nganh)

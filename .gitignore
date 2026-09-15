@@ -44,3 +44,10 @@ tests/golden/fixture/*
 /genquesai/legal_rag/.env
 /genquesai/legal_rag/.env.*
 !/genquesai/legal_rag/.env.example
+
+# Backup dữ liệu Neo4j trước khi xoá/sửa (script một-lần, đặt tên
+# `_backup_<mô_tả>_YYYYMMDD_HHMMSS.jsonl` hoặc thư mục `_backup_*_purge/{server,local}/`)
+# — nặng, không cần version, tái tạo lại được bằng cách chạy lại script tương ứng
+# nếu thật sự cần đối chiếu.
+genquesai/legal_rag/_backup_*.jsonl
+genquesai/legal_rag/_backup_*/

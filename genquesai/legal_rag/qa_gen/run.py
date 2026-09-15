@@ -19,16 +19,17 @@ from genquesai.legal_rag.config import get_settings
 from genquesai.legal_rag.graph.client import Neo4jClient
 from genquesai.legal_rag.agent.llm import LLM
 from genquesai.legal_rag.qa_gen.data import (hop_nhat_du_lieu, lap_ke_hoach, tai_qdrant_fallback,
-                                             de_xuat_kich_ban_lien_nganh)
+                                             lay_kich_ban_lien_nganh_co_dinh)
 from genquesai.legal_rag.qa_gen.generate import sinh_de
 from genquesai.legal_rag.qa_gen.verify import vong_1_omission, vong_2_hieu_luc, cham_bay_hieu_luc, quality_gate
 from genquesai.legal_rag.qa_gen.balance import can_bang, phan_phoi_thuc_te
+from genquesai.legal_rag.qa_gen.paraphrase import sinh_bien_the_ngon_ngu
 
 HERE = Path(__file__).parent
 RANDOM_SEED = 42
 
 
-def main(tong_muc_tieu: int = 20, workers: int = 8) -> None:
+def main(tong_muc_tieu: int = 20, workers: int = 8, sinh_bien_the: bool = True) -> None:
     s = get_settings()
     s_local = s.model_copy(update={
         "neo4j_uri": "bolt://localhost:7687", "neo4j_user": "neo4j",
@@ -65,8 +66,8 @@ def main(tong_muc_tieu: int = 20, workers: int = 8) -> None:
          f"{len(bang.huong_dan_lien_vb):,} cặp VB hướng dẫn (GUIDED_BY) · "
          f"{len(bang.dieu_khoan_chuyen_tiep):,} điều khoản chuyển tiếp ({time.time()-t0:.0f}s)")
 
-    print("== Bước 0b: đề xuất kịch bản liên ngành luật (1 lần, LLM) ==")
-    bang.kich_ban_lien_nganh = de_xuat_kich_ban_lien_nganh(llm, neo, so_luong=20)
+    print("== Bước 0b: khớp bộ kịch bản liên ngành CỐ ĐỊNH vào corpus (không gọi LLM) ==")
+    bang.kich_ban_lien_nganh = lay_kich_ban_lien_nganh_co_dinh(neo)
     print(f"  {len(bang.kich_ban_lien_nganh)} kịch bản khớp domain vào corpus ({time.time()-t0:.0f}s)")
 
     print("== Chuẩn bị Qdrant/embedder cho loại lien_nganh (tuỳ chọn) ==")
@@ -138,6 +139,11 @@ def main(tong_muc_tieu: int = 20, workers: int = 8) -> None:
     print(f"\n=== XONG: {len(rows)} câu hỏi ({time.time()-t0:.0f}s) ===")
     print(f"Phân phối thực tế: { {k: round(v,3) for k,v in phan_phoi.items()} }")
 
+    if sinh_bien_the:
+        print("== Bước 5: sinh biến thể ngôn ngữ (mô phỏng người dùng không chuyên) ==")
+        rows, diag5 = sinh_bien_the_ngon_ngu(llm, rows, workers, llm_kiem_tra=llm_verify)
+        print(f"  {diag5} ({time.time()-t0:.0f}s)")
+
     out_path = HERE / "_out_qa.jsonl"
     with open(out_path, "w", encoding="utf-8") as f:
         for r in rows:
@@ -148,4 +154,5 @@ def main(tong_muc_tieu: int = 20, workers: int = 8) -> None:
 if __name__ == "__main__":
     tt = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1] else 20
     wk = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2] else 8
-    main(tong_muc_tieu=tt, workers=wk)
+    bt = sys.argv[3] if len(sys.argv) > 3 and sys.argv[3] else "1"
+    main(tong_muc_tieu=tt, workers=wk, sinh_bien_the=(bt != "0"))
