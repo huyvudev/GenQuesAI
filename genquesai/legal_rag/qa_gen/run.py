@@ -31,11 +31,10 @@ RANDOM_SEED = 42
 
 def main(tong_muc_tieu: int = 20, workers: int = 8, sinh_bien_the: bool = True) -> None:
     s = get_settings()
-    s_local = s.model_copy(update={
-        "neo4j_uri": "bolt://localhost:7687", "neo4j_user": "neo4j",
-        "neo4j_password": "123qwe", "neo4j_database": "neo4j",
-    })
-    neo = Neo4jClient(s_local)
+    # 2026-09-29: bo han override localhost:7687 (con sot lai tu truoc dot chuyen Neo4j
+    # sang server online 2026-08-21, khong ai tunnel local nua) -> dung thang NEO4J_URI
+    # that trong .env (server online, xem ghi chu dau .env).
+    neo = Neo4jClient(s)
     neo.verify()
     llm = LLM(settings=s)
 

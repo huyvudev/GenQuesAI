@@ -1,6 +1,7 @@
 """LLM client — OpenAI-compatible (Groq/xAI/OpenAI). Chỉ dùng ở understand + synthesize."""
 from __future__ import annotations
 import json
+import threading
 import time
 
 from openai import OpenAI, APIError, RateLimitError
@@ -26,6 +27,25 @@ class LLM:
             self._extra = {"extra_body": {"google": {"thinking_config": {"thinking_budget": 0}}}}
         else:
             self._extra = {}
+        # Đếm token dồn tích (đa luồng an toàn) — dùng để ước tính cost/câu (eval/measure_cost.py),
+        # không ảnh hưởng luồng chat()/chat_json() bình thường (chỉ đọc thêm r.usage đã có sẵn).
+        self._usage_lock = threading.Lock()
+        self.total_prompt_tokens = 0
+        self.total_completion_tokens = 0
+        self.total_cache_hit_tokens = 0
+        self.total_cache_miss_tokens = 0
+        self.n_calls = 0
+
+    def _track_usage(self, r) -> None:
+        u = getattr(r, "usage", None)
+        if u is None:
+            return
+        with self._usage_lock:
+            self.total_prompt_tokens += getattr(u, "prompt_tokens", 0) or 0
+            self.total_completion_tokens += getattr(u, "completion_tokens", 0) or 0
+            self.total_cache_hit_tokens += getattr(u, "prompt_cache_hit_tokens", 0) or 0
+            self.total_cache_miss_tokens += getattr(u, "prompt_cache_miss_tokens", 0) or 0
+            self.n_calls += 1
 
     def _create(self, **kw):
         """Gọi có retry/backoff khi rate-limit (429) hoặc lỗi tạm thời — cho batch lớn."""
@@ -33,14 +53,18 @@ class LLM:
             kw.setdefault("extra_body", {}).update(self._extra)
         for attempt in range(6):
             try:
-                return self._client.chat.completions.create(**kw)
+                r = self._client.chat.completions.create(**kw)
+                self._track_usage(r)
+                return r
             except RateLimitError:
                 time.sleep(min(2 ** attempt * 2, 60))
             except APIError:
                 if attempt >= 3:
                     raise
                 time.sleep(2 ** attempt)
-        return self._client.chat.completions.create(**kw)
+        r = self._client.chat.completions.create(**kw)
+        self._track_usage(r)
+        return r
 
     def chat(self, system: str, user: str, temperature: float = 0.0,
              max_tokens: int = 1200) -> str:

@@ -4,7 +4,13 @@ dự án là đồng bộ, không phải async — theo đúng convention `_tric
 Sửa bug RNG reseed của bản gốc (proposed.ipynb): `rng` được tạo 1 LẦN DUY NHẤT ở
 `run.py` rồi TRUYỀN VÀO đây — không tự tạo `random.Random(seed_cố_định)` mỗi lần
 gọi hàm (bug thật đã tìm thấy: sinh bù ở Bước 4 gọi lại đúng hàm này với cùng seed,
-tăng rủi ro trùng câu hỏi giữa lượt đầu và lượt bù)."""
+tăng rủi ro trùng câu hỏi giữa lượt đầu và lượt bù).
+
+Tăng `max_tokens` ở mọi lời gọi `chat_json` bên dưới (2026-09-29, cùng đợt đổi văn phong
+đáp án theo tập gold ở prompts.py::ANSWER_STYLE_GOLD): đáp án dạng "Căn cứ ... như sau:"
++ gạch đầu dòng dài hơn hẳn đáp án ngắn gọn trước đây — mức cũ (400-900) từng cắt cụt JSON
+giữa chừng ở loại multi-hop (P_CAU_TRUC/P_HUONG_DAN_LIEN_VB/P_LIEN_NGANH), khiến hàm tưởng
+LLM từ chối ghép trong khi thực ra là do thiếu token (đã tái hiện và xác nhận bằng tay)."""
 from __future__ import annotations
 import random
 from concurrent.futures import ThreadPoolExecutor
@@ -30,7 +36,7 @@ def _meta_chung(*dieu_list: Dieu) -> dict:
 
 def _gen_mot_buoc(llm, d: Dieu) -> dict | None:
     out = llm.chat_json(_SYS, P_MOT_BUOC.format(breadcrumb=breadcrumb(d.so_hieu, d.duong_dan),
-                                                ctx=d.text[:2500]), temperature=0.4, max_tokens=400)
+                                                ctx=d.text[:2500]), temperature=0.4, max_tokens=700)
     if not out or "question" not in out or "answer" not in out:
         return None
     return {"question": out["question"], "answer": out["answer"], "contexts": [d.text],
@@ -41,7 +47,7 @@ def _gen_cau_truc(llm, a: Dieu, b: Dieu) -> dict | None:
     out = llm.chat_json(_SYS, P_CAU_TRUC.format(
         breadcrumb_a=breadcrumb(a.so_hieu, a.duong_dan), ctx_a=a.text[:2000],
         breadcrumb_b=breadcrumb(b.so_hieu, b.duong_dan), ctx_b=b.text[:2000]),
-        temperature=0.4, max_tokens=700)
+        temperature=0.4, max_tokens=1400)
     needed = {"question", "answer", "fact_chi_co_a", "fact_chi_co_b", "buoc_1", "buoc_2"}
     if not out or not needed <= out.keys():
         return None
@@ -59,7 +65,7 @@ def _gen_hieu_luc(llm, bang: BangDuLieu, cu: Dieu, src_norm_id: str, so_hieu_ngu
     out = llm.chat_json(_SYS, P_THAY_DOI_HIEU_LUC.format(
         ngay_het_hl=cu.hieu_luc_den, so_hieu_nguon=so_hieu_nguon,
         breadcrumb_cu=breadcrumb(cu.so_hieu, cu.duong_dan), ctx_cu=cu.text[:2500],
-        toan_van_nguon=tv), temperature=0.3, max_tokens=800)
+        toan_van_nguon=tv), temperature=0.3, max_tokens=1400)
     if not out or not out.get("tim_thay"):
         return None
     needed = {"question", "answer", "gia_tri_cu", "gia_tri_moi"}
@@ -76,7 +82,7 @@ def _gen_hieu_luc(llm, bang: BangDuLieu, cu: Dieu, src_norm_id: str, so_hieu_ngu
 
 def _gen_gai_bay(llm, d: Dieu) -> dict | None:
     out = llm.chat_json(_SYS, P_GAI_BAY.format(breadcrumb=breadcrumb(d.so_hieu, d.duong_dan),
-                                               ctx=d.text[:2500]), temperature=0.5, max_tokens=400)
+                                               ctx=d.text[:2500]), temperature=0.5, max_tokens=700)
     needed = {"question", "answer", "gia_tri_goc", "gia_tri_doi"}
     if not out or not needed <= out.keys():
         return None
@@ -95,7 +101,7 @@ def _gen_gai_bay(llm, d: Dieu) -> dict | None:
 def _gen_bay_hieu_luc(llm, cu: Dieu) -> dict | None:
     out = llm.chat_json(_SYS, P_BAY_HIEU_LUC.format(
         ngay_het_hl=cu.hieu_luc_den, breadcrumb=breadcrumb(cu.so_hieu, cu.duong_dan),
-        ctx=cu.text[:2500]), temperature=0.4, max_tokens=500)
+        ctx=cu.text[:2500]), temperature=0.4, max_tokens=800)
     if not out or "question" not in out or "answer" not in out:
         return None
     return {"question": out["question"], "answer": out["answer"], "contexts": [cu.text],
@@ -109,7 +115,7 @@ def _gen_bai_bo_tung_phan(llm, item: BaiBoTungPhan) -> dict | None:
         ngay_het_hl=item.ngay_het_hl,
         breadcrumb_dieu=breadcrumb(item.dieu_cha.so_hieu, item.dieu_cha.duong_dan),
         ctx_phan=item.text[:2000], ctx_dieu=item.dieu_cha.text[:2500]),
-        temperature=0.4, max_tokens=500)
+        temperature=0.4, max_tokens=800)
     if not out or "question" not in out or "answer" not in out:
         return None
     return {"question": out["question"], "answer": out["answer"],
@@ -125,7 +131,7 @@ def _gen_huong_dan_lien_vb(llm, bang: BangDuLieu, a: Dieu, norm_b: str, so_hieu_
         return None
     out = llm.chat_json(_SYS, P_HUONG_DAN_LIEN_VB.format(
         breadcrumb_a=breadcrumb(a.so_hieu, a.duong_dan), ctx_a=a.text[:2000],
-        so_hieu_b=so_hieu_b, toan_van_b=tv_b), temperature=0.3, max_tokens=900)
+        so_hieu_b=so_hieu_b, toan_van_b=tv_b), temperature=0.3, max_tokens=1600)
     if not out or not out.get("tim_thay"):
         return None
     needed = {"question", "answer", "doan_b_tim_duoc", "fact_chi_co_a", "fact_chi_co_b", "buoc_1", "buoc_2"}
@@ -144,7 +150,7 @@ def _gen_chuyen_tiep(llm, item: DieuKhoanChuyenTiep) -> dict | None:
     out = llm.chat_json(_SYS, P_CHUYEN_TIEP.format(
         breadcrumb=f"{item.so_hieu} — {item.nguon_dieu_khoan}",
         dieu_kien=item.dieu_kien, van_ban_ap_dung=item.van_ban_ap_dung,
-        ctx=item.dieu_kien_raw[:1500]), temperature=0.4, max_tokens=500)
+        ctx=item.dieu_kien_raw[:1500]), temperature=0.4, max_tokens=800)
     if not out or "question" not in out or "answer" not in out:
         return None
     return {"question": out["question"], "answer": out["answer"],
@@ -192,7 +198,7 @@ def _gen_lien_nganh(llm, qdrant_store, collection: str, embedder, kb: KichBanLie
                 boi_canh=kb.boi_canh, so_hieu_a=pa["so_hieu"], so_hieu_b=pb["so_hieu"],
                 breadcrumb_a=breadcrumb(pa["so_hieu"], pa["duong_dan"]), ctx_a=pa["text"][:2000],
                 breadcrumb_b=breadcrumb(pb["so_hieu"], pb["duong_dan"]), ctx_b=pb["text"][:2000]),
-                temperature=0.4, max_tokens=700)
+                temperature=0.4, max_tokens=1400)
             if not out or not out.get("lien_quan"):
                 continue
             needed = {"question", "answer", "fact_chi_co_a", "fact_chi_co_b", "buoc_1", "buoc_2"}

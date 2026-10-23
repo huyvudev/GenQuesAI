@@ -3,6 +3,23 @@ dùng P_SINGLE/P_MULTI/P_ADV tiếng Anh của bản gốc `proposed.ipynb` — 
 cầu người dùng 2026-08-26: bỏ hết phần sinh câu hỏi cũ, code lại)."""
 from __future__ import annotations
 
+# Van phong dap an theo tap gold (hoidap_tvpl_gold.json, nguon thuvienphapluat.vn):
+# mo dau bang cau dan chieu "Can cu ... quy dinh ... nhu sau:", noi dung bam nguyen
+# van dieu luat bang gach dau dong, ket bang cau "Theo do,"/"Nhu vay," neu can rut ra
+# ket luan. Ap dung chung cho tat ca prompt sinh dap an ben duoi.
+ANSWER_STYLE_GOLD = (
+    "ĐỊNH DẠNG ĐÁP ÁN (bám văn phong hỏi-đáp pháp luật thực tế, kiểu thuvienphapluat.vn):\n"
+    "- Câu đầu tiên PHẢI dẫn chiếu rõ căn cứ, dạng 'Căn cứ [Khoản ...] Điều ... [số hiệu văn bản] "
+    "quy định về [chủ đề] như sau:' hoặc 'Theo Điều ... [số hiệu văn bản] quy định:'.\n"
+    "- Nội dung sau đó trình bày bằng gạch đầu dòng '-' (và '+' cho ý con nếu cần), bám sát câu "
+    "chữ/cấu trúc của điều luật gốc trong ngữ cảnh — KHÔNG diễn giải lại thành văn xuôi trôi chảy.\n"
+    "- Nếu câu hỏi cần một kết luận cụ thể (số liệu, mốc thời gian, câu trả lời trực tiếp), thêm "
+    "câu chuyển 'Theo đó,' hoặc 'Như vậy,' ngay sau phần trích dẫn để nêu rõ kết luận đó.\n"
+    "- Nếu đáp án cần dùng nhiều Điều/Khoản hoặc nhiều văn bản, dẫn chiếu tuần tự từng phần, mỗi "
+    "phần nêu rõ Điều/Khoản + số hiệu văn bản tương ứng trước khi trình bày nội dung đó.\n"
+    "- KHÔNG dùng in đậm/markdown, KHÔNG chia tiêu đề phụ, KHÔNG tự thêm mục 'Căn cứ pháp lý' ở cuối.\n"
+)
+
 P_MOT_BUOC = (
     "Bạn là chuyên gia ra đề QA cho benchmark RAG pháp luật Việt Nam.\n\n"
     "Nhiệm vụ: từ NGỮ CẢNH dưới đây, sinh 1 câu hỏi-đáp một bước (chỉ cần đúng 1 đoạn để trả lời).\n"
@@ -11,8 +28,9 @@ P_MOT_BUOC = (
     "- KHÔNG hỏi dạng Có/Không.\n"
     "- Diễn đạt lại (paraphrase) — KHÔNG chép nguyên câu chữ đặc trưng trong ngữ cảnh, "
     "để không thể trả lời chỉ bằng khớp từ khoá.\n"
-    "- Đáp án lấy trực tiếp được từ ngữ cảnh, ngắn gọn.\n\n"
-    "NGỮ CẢNH ({breadcrumb}):\n```\n{ctx}\n```\n\n"
+    "- Đáp án lấy trực tiếp được từ ngữ cảnh.\n\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nNGỮ CẢNH ({breadcrumb}):\n```\n{ctx}\n```\n\n"
     'Trả JSON: {{"question": "...", "answer": "..."}}'
 )
 
@@ -38,7 +56,8 @@ P_CAU_TRUC = (
     "phân biệt 2 đoạn trong hướng dẫn này — TUYỆT ĐỐI KHÔNG chép nguyên chữ 'A'/'B'/'đoạn A'/'văn "
     "bản B' vào question/answer/fact_chi_co_a/fact_chi_co_b/buoc_1/buoc_2 — phải gọi bằng tên/số "
     "hiệu văn bản và Điều/Khoản THẬT (vd 'Điều 5 Nghị định 10/2020/NĐ-CP', không phải 'Điều A').\n\n"
-    "ĐOẠN A ({breadcrumb_a}):\n```\n{ctx_a}\n```\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nĐOẠN A ({breadcrumb_a}):\n```\n{ctx_a}\n```\n"
     "ĐOẠN B ({breadcrumb_b}, có tham chiếu tới A):\n```\n{ctx_b}\n```\n\n"
     'Trả JSON: {{"question":"...","answer":"...","fact_chi_co_a":"...","fact_chi_co_b":"...",'
     '"buoc_1":"...","buoc_2":"..."}}'
@@ -58,7 +77,8 @@ P_THAY_DOI_HIEU_LUC = (
     "TUYỆT ĐỐI KHÔNG bịa nội dung mới.\n\n"
     "Nếu tìm thấy, sinh 1 câu hỏi mà đáp án BẮT BUỘC nêu RÕ CẢ quy định CŨ lẫn MỚI (không chỉ 1 "
     "chiều) — ví dụ dạng 'quy định về X đã thay đổi thế nào', không hỏi 'quy định hiện hành là gì'.\n\n"
-    "NỘI DUNG CŨ ({breadcrumb_cu}):\n```\n{ctx_cu}\n```\n\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nNỘI DUNG CŨ ({breadcrumb_cu}):\n```\n{ctx_cu}\n```\n\n"
     "TOÀN VĂN văn bản {so_hieu_nguon} (đi tìm đoạn thay thế trong này):\n```\n{toan_van_nguon}\n```\n\n"
     'Trả JSON: {{"tim_thay": <true|false>, "question":"...", "answer":"...", '
     '"gia_tri_cu":"...", "gia_tri_moi":"..."}}'
@@ -72,7 +92,8 @@ P_GAI_BAY = (
     "2. Đặt ra gia_tri_doi — khác rõ rệt, KHÔNG xuất hiện trong ngữ cảnh (kể cả dạng chuỗi con).\n"
     "3. Viết câu hỏi tự nhiên (diễn đạt lại, không chép nguyên câu chữ đặc trưng) về giá trị đó; "
     "đáp án chứa gia_tri_doi.\n\n"
-    "NGỮ CẢNH ({breadcrumb}):\n```\n{ctx}\n```\n\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nNGỮ CẢNH ({breadcrumb}):\n```\n{ctx}\n```\n\n"
     'Trả JSON: {{"question":"...","answer":"...","gia_tri_goc":"...","gia_tri_doi":"..."}}'
 )
 
@@ -84,7 +105,8 @@ P_BAY_HIEU_LUC = (
     "đã hết hiệu lực trong câu hỏi (để test xem hệ thống có tự phát hiện và cảnh báo hay không).\n"
     "Đáp án CHUẨN phải: (a) nêu đúng nội dung trong ngữ cảnh này, VÀ (b) cảnh báo rõ đây là quy định "
     "ĐÃ HẾT HIỆU LỰC từ {ngay_het_hl}, không nên áp dụng.\n\n"
-    "NGỮ CẢNH ({breadcrumb}, ĐÃ HẾT HIỆU LỰC):\n```\n{ctx}\n```\n\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nNGỮ CẢNH ({breadcrumb}, ĐÃ HẾT HIỆU LỰC):\n```\n{ctx}\n```\n\n"
     'Trả JSON: {{"question":"...","answer":"..."}}'
 )
 
@@ -107,7 +129,8 @@ P_BAI_BO_TUNG_PHAN = (
     "áp dụng — KHÔNG được trả lời như thể nội dung đó vẫn còn hiệu lực, VÀ (b) nói rõ "
     "đây chỉ là bãi bỏ 1 phần, các nội dung khác của {breadcrumb_dieu} không bị ảnh "
     "hưởng và vẫn còn hiệu lực.\n\n"
-    "PHẦN ĐÃ BỊ BÃI BỎ ({breadcrumb_phan}):\n```\n{ctx_phan}\n```\n\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nPHẦN ĐÃ BỊ BÃI BỎ ({breadcrumb_phan}):\n```\n{ctx_phan}\n```\n\n"
     "NỘI DUNG HIỆN HÀNH của Điều cha ({breadcrumb_dieu}):\n```\n{ctx_dieu}\n```\n\n"
     'Trả JSON: {{"question":"...","answer":"..."}}'
 )
@@ -144,7 +167,8 @@ P_HUONG_DAN_LIEN_VB = (
     "hướng dẫn này — TUYỆT ĐỐI KHÔNG chép nguyên chữ 'A'/'B'/'Điều A'/'văn bản B' vào "
     "question/answer/fact_chi_co_a/fact_chi_co_b/buoc_1/buoc_2 — phải gọi bằng tên/số hiệu văn bản "
     "và Điều/Khoản THẬT (vd 'Điều 5 Nghị định 10/2020/NĐ-CP', không phải 'Điều A').\n\n"
-    "ĐIỀU A ({breadcrumb_a}):\n```\n{ctx_a}\n```\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nĐIỀU A ({breadcrumb_a}):\n```\n{ctx_a}\n```\n"
     "TOÀN VĂN văn bản B ({so_hieu_b}, hướng dẫn/căn cứ theo văn bản của Điều A):\n```\n{toan_van_b}\n```\n\n"
     'Trả JSON: {{"tim_thay": <true|false>, "question":"...", "answer":"...", '
     '"doan_b_tim_duoc":"...", "fact_chi_co_a":"...", "fact_chi_co_b":"...", '
@@ -173,8 +197,9 @@ P_CHUYEN_TIEP = (
     "- KHÔNG hỏi dạng Có/Không — CẤM các câu hỏi kết thúc bằng '... hay không?', '... có phải "
     "không?', '... đúng không?'. Hỏi bằng 'xử lý thế nào', 'áp dụng quy định nào', 'phải làm "
     "gì' — KHÔNG hỏi 'có phải làm X hay không'.\n"
-    "- Đáp án phải nêu đúng theo QUY ĐỊNH ÁP DỤNG ở trên, diễn đạt tự nhiên, đầy đủ.\n\n"
-    'Trả JSON: {{"question":"...","answer":"..."}}'
+    "- Đáp án phải nêu đúng theo QUY ĐỊNH ÁP DỤNG ở trên, đầy đủ.\n\n"
+) + ANSWER_STYLE_GOLD + (
+    '\nTrả JSON: {{"question":"...","answer":"..."}}'
 )
 
 
@@ -219,7 +244,8 @@ P_LIEN_NGANH = (
     "TUYỆT ĐỐI KHÔNG chép nguyên chữ 'A'/'B'/'đoạn A'/'đoạn B' vào "
     "question/answer/fact_chi_co_a/fact_chi_co_b/buoc_1/buoc_2 — phải gọi bằng tên/số hiệu văn bản "
     "và Điều/Khoản THẬT (vd 'Điều 5 Luật Đầu tư', không phải 'Điều A').\n\n"
-    "ĐOẠN A ({breadcrumb_a}):\n```\n{ctx_a}\n```\n"
+) + ANSWER_STYLE_GOLD + (
+    "\nĐOẠN A ({breadcrumb_a}):\n```\n{ctx_a}\n```\n"
     "ĐOẠN B ({breadcrumb_b}):\n```\n{ctx_b}\n```\n\n"
     'Trả JSON: {{"lien_quan": <true|false>, "question":"...","answer":"...",'
     '"fact_chi_co_a":"...","fact_chi_co_b":"...","buoc_1":"...","buoc_2":"..."}}'

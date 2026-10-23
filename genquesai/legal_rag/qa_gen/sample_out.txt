@@ -1,0 +1,68 @@
+========== single_hop ==========
+Q: Cơ quan, tổ chức được giao quản lý công trình quốc phòng có trách nhiệm tuyên truyền, giáo dục những đối tượng nào và xử lý vi phạm ra sao?
+A: Theo Điều 31 của văn bản hợp nhất 142/VBHN-VPQH quy định về trách nhiệm quản lý, bảo vệ công trình quốc phòng và khu quân sự như sau:
+- Tuyên truyền, phổ biến, giáo dục công chức, viên chức, người lao động thuộc phạm vi quản lý chấp hành quy định của pháp luật về quản lý, bảo vệ công trình quốc phòng và khu quân sự.
+- Tổ chức quản lý, bảo vệ công trình quốc phòng được giao theo quy định của Luật này và pháp luật có liên quan.
+- Xử lý vi phạm pháp luật về quản lý, bảo vệ công trình quốc phòng và khu quân sự theo thẩm quyền.
+Như vậy, đối tượng được tuyên truyền, giáo dục là công chức, viên chức, người lao động thuộc phạm vi quản lý, và việc xử lý vi phạm được thực hiện theo thẩm quyền.
+
+========== structural_multihop ==========
+Q: Theo quy định tại Điều 67 của văn bản hợp nhất 56/VBHN-VPQH, ngoài đèn hiệu quy định tại Điều 50 của Luật này, phương tiện khi làm nhiệm vụ đặc biệt phải sử dụng đồng thời âm hiệu, đèn hiệu, cờ hiệu theo quy định. Vậy đối với phương tiện loại E và loại F, đèn hiệu được quy định cụ thể như thế nào tại Điều 50 của văn bản hợp nhất 56/VBHN-VPQH và các loại đèn hiệu này có thuộc trường hợp phải sử dụng đồng thời âm hiệu, đèn hiệu, cờ hiệu theo Điều 67 không?
+A: Căn cứ Điều 67 của văn bản hợp nhất 56/VBHN-VPQH quy định về việc sử dụng đồng thời âm hiệu, đèn hiệu, cờ hiệu đối với phương tiện làm nhiệm vụ đặc biệt như sau:
+- Ngoài đèn hiệu quy định tại Điều 50 của Luật này, phương tiện khi làm nhiệm vụ đặc biệt phải sử dụng đồng thời âm hiệu, đèn hiệu, cờ hiệu theo quy định.
+Theo Điều 50 của văn bản hợp nhất 56/VBHN-VPQH quy định về đèn hiệu của phương tiện loại E và loại F như sau:
+- Đối với phương tiện loại E, thắp một đèn đỏ đặt giữa bè; thắp hai đèn trắng đặt trên trục dọc giữa bè, một đèn ở đầu bè, một đèn ở cuối bè; nếu bè có chiều rộng trên 15 mét thì thay các đèn trắng ở trục dọc bằng bốn đèn trắng ở bốn góc bè, các đèn này đặt cao hơn mặt nước ít nhất 1,5 mét.
+- Đối với phương tiện loại F, thắp một đèn đỏ đặt giữa bè cao hơn mặt nước ít nhất 1,5 mét.
+Như vậy, đèn hiệu của phương tiện loại E và loại F được quy định tại Điều 50 của văn bản hợp nhất 56/VBHN-VPQH; khi phương tiện loại E hoặc loại F làm nhiệm vụ đặc biệt thì ngoài các đèn hiệu này còn phải sử dụng đồng thời âm hiệu, đèn hiệu, cờ hiệu theo Điều 67 của văn bản hợp nhất 56/VBHN-VPQH.
+
+========== validity_change ==========
+Q: Quy định về đối tượng là công ty nhà nước tại điểm b khoản 1 Điều 1 Thông tư 175/2009/TT-BTC đã được thay đổi như thế nào theo Thông tư 39/2011/TT-BTC?
+A: Căn cứ Điều 1 Thông tư số 39/2011/TT-BTC sửa đổi, bổ sung điểm b khoản 1 Điều 1 Thông tư số 175/2009/TT-BTC quy định về đối tượng là công ty nhà nước như sau:
+- Trước đây, theo điểm b khoản 1 Điều 1 Thông tư số 175/2009/TT-BTC, đối tượng được xác định là: Công ty nhà nước thuộc Trung ương và địa phương quản lý, gồm: Tổng công ty nhà nước, Công ty nhà nước, Công ty trách nhiệm hữu hạn một thành viên do nhà nước sở hữu 100% vốn (sau đây gọi chung là công ty nhà nước).
+- Nay được sửa đổi, bổ sung thành: Doanh nghiệp 100% vốn nhà nước gồm: Công ty mẹ của tập đoàn kinh tế, công ty mẹ của tổng công ty nhà nước, công ty nhà nước độc lập và công ty trách nhiệm hữu hạn một thành viên do nhà nước là chủ sở hữu (sau đây gọi chung là công ty nhà nước).
+Như vậy, đối tượng đã được mở rộng và xác định lại thành doanh nghiệp 100% vốn nhà nước, bao gồm công ty mẹ của tập đoàn kinh tế, công ty mẹ của tổng công ty nhà nước, công ty nhà nước độc lập và công ty trách nhiệm hữu hạn một thành viên do nhà nước là chủ sở hữu.
+
+========== adversarial ==========
+Q: Theo quy định về kế toán khoản nhận tài trợ, hỗ trợ tại Quỹ, số dư bên Có của tài khoản 354 phản ánh điều gì và được xác định vào thời điểm nào?
+A: Căn cứ Điều 13 Thông tư 317/2016/TT-BTC quy định về kết cấu và nội dung phản ánh của tài khoản 354 - “Nhận tài trợ, hỗ trợ” như sau:
+- Bên Nợ:
++ Số tài trợ, hỗ trợ đã cấp phát cho các đối tượng theo quy định trong kỳ;
++ Số tiền chưa cấp phát cho các đối tượng phải trả lại cho ngân sách trong kỳ (nếu phải nộp ngân sách);
++ Số tiền chưa cấp phát cho các đối tượng ghi vào doanh thu trong kỳ (nếu được cấp trên cho phép).
+- Bên Có:
++ Số tiền đã nhận trong kỳ;
++ Số trích từ chênh lệch thu chi sau thuế chưa phân phối (nếu được phép).
+- Số dư bên Có: Số tiền tài trợ, hỗ trợ còn lại tại thời điểm báo cáo.
+Theo đó, số dư bên Có của tài khoản 354 là số tiền tài trợ, hỗ trợ còn lại tại thời điểm báo cáo.
+
+========== validity_trap ==========
+Q: Chi phí tổ chức hoán đổi trái phiếu do ngân sách trung ương đảm bảo và chi trả cho Kho bạc Nhà nước được quy định theo tỷ lệ tối đa là bao nhiêu?
+A: Căn cứ Điều 12 Thông tư 150/2011/TT-BTC quy định về chi phí tổ chức hoán đổi trái phiếu như sau:
+- Toàn bộ chi phí tổ chức hoán đổi trái phiếu do ngân sách trung ương đảm bảo và chi trả cho Kho bạc Nhà nước theo tỷ lệ tối đa không quá 0,01% (một phần vạn) mệnh giá trái phiếu bị hoán đổi đã được hoán đổi thành công.
+Theo đó, mức chi phí tổ chức hoán đổi trái phiếu tối đa là 0,01% (một phần vạn) mệnh giá trái phiếu bị hoán đổi đã được hoán đổi thành công.
+Tuy nhiên cần lưu ý: quy định tại Điều 12 Thông tư 150/2011/TT-BTC đã HẾT HIỆU LỰC từ ngày 01/01/2019 và không còn được áp dụng; cần tra cứu văn bản thay thế hiện hành để có căn cứ chính xác.
+
+========== partial_repeal ==========
+Q: Sở Tư pháp giúp Ủy ban nhân dân cấp tỉnh thực hiện quản lý nhà nước về hôn nhân và gia đình có yếu tố nước ngoài tại địa phương, đăng ký việc nhận cha, mẹ, con và ghi vào sổ việc kết hôn, nhận cha, mẹ, con theo quy định nào?
+A: Căn cứ Khoản 2 Điều 63 Nghị định 126/2014/NĐ-CP quy định chi tiết một số điều và biện pháp thi hành Luật Hôn nhân và gia đình về quan hệ hôn nhân và gia đình có yếu tố nước ngoài:
+- Sở Tư pháp giúp Ủy ban nhân dân cấp tỉnh trong việc thực hiện quản lý nhà nước về hôn nhân và gia đình có yếu tố nước ngoài tại địa phương;
+- Đăng ký việc nhận cha, mẹ, con;
+- Ghi vào sổ việc kết hôn, nhận cha, mẹ, con;
+- Thực hiện nhiệm vụ và quyền hạn cụ thể theo quy định của Nghị định này.
+Tuy nhiên, theo quy định tại Nghị định 33/2023/NĐ-CP có hiệu lực từ ngày 11/5/2023, Khoản 2 Điều 63 Nghị định 126/2014/NĐ-CP đã bị bãi bỏ toàn bộ, không còn áp dụng kể từ ngày 11/5/2023. Đây chỉ là bãi bỏ một phần, các nội dung khác của Điều 63 Nghị định 126/2014/NĐ-CP không bị ảnh hưởng và vẫn còn hiệu lực thi hành. Như vậy, quy định về việc Sở Tư pháp giúp Ủy ban nhân dân cấp tỉnh quản lý nhà nước về hôn nhân và gia đình có yếu tố nước ngoài, đăng ký việc nhận cha, mẹ, con, ghi vào sổ việc kết hôn, nhận cha, mẹ, con tại Khoản 2 Điều 63 Nghị định 126/2014/NĐ-CP không còn hiệu lực để áp dụng.
+
+========== cross_norm_guidance ==========
+Q: Theo quy định tại Điều 7 Thông tư 01/2015/TT-BCT, Sở Công Thương phải cập nhật cho Bộ Công Thương (Vụ Khoa học và Công nghệ) nội dung đăng ký dấu nghiệp vụ của thương nhân trong thời hạn bao nhiêu ngày kể từ ngày thương nhân đăng ký mới, thay đổi, bổ sung hoặc bị xóa đăng ký dấu nghiệp vụ; và theo Nghị định 125/2014/NĐ-CP thì thương nhân kinh doanh dịch vụ giám định thương mại chưa đăng ký dấu nghiệp vụ phải hoàn thành thủ tục đăng ký trong thời hạn bao nhiêu tháng kể từ ngày Nghị định có hiệu lực?
+A: Căn cứ Điều 7 Thông tư 01/2015/TT-BCT quy định về việc cập nhật thông tin đăng ký dấu nghiệp vụ giám định thương mại như sau:
+- Sở Công Thương có trách nhiệm cập nhật về Bộ Công Thương (Vụ Khoa học và Công nghệ) các nội dung theo quy định tại điểm b khoản 2 Điều này trong thời gian 30 ngày kể từ ngày thương nhân đăng ký mới, thay đổi, bổ sung hoặc bị xóa đăng ký dấu nghiệp vụ.
+Căn cứ Điều 5 Nghị định 125/2014/NĐ-CP quy định về việc đăng ký dấu nghiệp vụ đối với thương nhân kinh doanh dịch vụ giám định thương mại như sau:
+- Trong thời hạn 3 tháng kể từ ngày Nghị định này có hiệu lực, các thương nhân kinh doanh dịch vụ giám định thương mại chưa đăng ký dấu nghiệp vụ phải hoàn thành thủ tục đăng ký dấu nghiệp vụ theo quy định tại Nghị định này.
+Theo đó, thời hạn Sở Công Thương phải cập nhật cho Bộ Công Thương là 30 ngày kể từ ngày thương nhân đăng ký mới, thay đổi, bổ sung hoặc bị xóa đăng ký dấu nghiệp vụ; còn thương nhân chưa đăng ký dấu nghiệp vụ phải hoàn thành thủ tục đăng ký trong thời hạn 3 tháng kể từ ngày Nghị định 125/2014/NĐ-CP có hiệu lực.
+
+========== transitional_provision ==========
+Q: Năm 2014, ông A và bà B ký hợp đồng mua bán một căn nhà. Hợp đồng này có nội dung và hình thức không giống với quy định của Bộ luật dân sự năm 2015 (ví dụ về điều kiện công chứng, chứng thực). Tuy nhiên, đến nay hai bên vẫn chưa tiến hành bất kỳ bước thực hiện nào của hợp đồng (chưa giao nhà, chưa thanh toán tiền). Trường hợp này phải xử lý thế nào, áp dụng quy định của Bộ luật dân sự năm 2015 hay Bộ luật dân sự năm 2005?
+A: Căn cứ Điều 688 Bộ luật dân sự số 91/2015/QH13 quy định về việc áp dụng pháp luật đối với giao dịch dân sự được xác lập trước ngày Bộ luật này có hiệu lực như sau:
+- Đối với giao dịch dân sự chưa được thực hiện mà có nội dung, hình thức khác với quy định của Bộ luật này thì chủ thể giao dịch tiếp tục thực hiện theo quy định của Bộ luật dân sự số 33/2005/QH11 và các văn bản quy phạm pháp luật quy định chi tiết Bộ luật dân sự số 33/2005/QH11;
++ Trừ trường hợp các bên của giao dịch dân sự có thỏa thuận về việc sửa đổi, bổ sung nội dung, hình thức của giao dịch để phù hợp với Bộ luật này và để áp dụng quy định của Bộ luật này.
+Theo đó, hợp đồng mua bán nhà giữa ông A và bà B tuy được xác lập trước ngày Bộ luật dân sự năm 2015 có hiệu lực, nhưng chưa được thực hiện và có nội dung, hình thức khác với quy định của Bộ luật dân sự năm 2015, nên các bên tiếp tục thực hiện theo quy định của Bộ luật dân sự số 33/2005/QH11 và các văn bản quy phạm pháp luật quy định chi tiết Bộ luật dân sự số 33/2005/QH11, trừ trường hợp các bên có thỏa thuận sửa đổi, bổ sung nội dung, hình thức của giao dịch để phù hợp với Bộ luật dân sự năm 2015 và để áp dụng quy định của Bộ luật này.
+

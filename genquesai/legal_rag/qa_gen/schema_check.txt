@@ -1,0 +1,11 @@
+[
+  {
+    "muc_do": "doi_thuong",
+    "cau_hoi": "Chào luật sư, tôi có thắc mắc về mấy khu vực quân sự hay công trình quốc phòng. Không biết mấy cơ quan được giao quản lý mấy chỗ đó thì họ có phải tuyên truyền, nhắc nhở ai đó hiểu và làm theo quy định pháp luật về việc quản lý, bảo vệ mấy khu vực này không? Nếu có thì họ cần tuyên truyền cho những ai ạ?"
+  },
+  {
+    "muc_do": "mo_ho",
+    "cau_hoi": "Cơ quan, tổ chức được giao quản lý công trình quốc phòng có trách nhiệm tuyên truyền, phổ biến, giáo dục những ai phải chấp hành quy định của pháp luật về quản lý, bảo vệ công trình quốc phòng và khu quân sự?"
+  }
+]
+keys of row: ['question', 'answer', 'contexts', 'type', 'source_comp_ids', 'parent_path', 'validity_status_at_generation', 'bien_the_ngon_ngu']

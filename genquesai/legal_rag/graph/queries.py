@@ -1,8 +1,18 @@
 """Cypher cookbook (ARCH §7). P1: point-in-time (§7.1)."""
 from __future__ import annotations
+import re
 from datetime import date
 
 from .client import Neo4jClient
+
+# Ký tự đặc biệt cú pháp Lucene — $q trong db.index.fulltext.queryNodes là QUERY STRING, không
+# phải literal, nên câu hỏi chứa các ký tự này (vd "/" trong số hiệu VB) làm vỡ cú pháp Lucene
+# ("Lexical error", "ParseException... <EOF>"). Escape bằng backslash trước khi truyền vào.
+_LUCENE_SPECIAL_RE = re.compile(r'([+\-!(){}\[\]^"~*?:\\/&|])')
+
+
+def lucene_escape(s: str) -> str:
+    return _LUCENE_SPECIAL_RE.sub(r"\\\1", s or "")
 
 _POINT_IN_TIME = """
 MATCH (n:Norm {so_hieu:$so_hieu})-[:HAS_PART*]->(c:Component)-[:HAS_VERSION]->(e:Expression)
@@ -77,6 +87,7 @@ def find_norms_by_name(client: Neo4jClient, name_query: str, loais: list[str],
     q = name_query.strip()
     if len(q) < 4:
         return []
+    q = lucene_escape(q)
     rows = client.run(
         "CALL db.index.fulltext.queryNodes('norm_tieu_de_ft', $q) YIELD node, score "
         "WHERE node.loai_vb IN $loais AND score >= $ms "

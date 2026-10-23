@@ -1,0 +1,61 @@
+========== single_hop ==========
+Q: Cơ quan, tổ chức được giao quản lý công trình quốc phòng có trách nhiệm tuyên truyền, phổ biến, giáo dục những đối tượng nào phải chấp hành quy định của pháp luật về quản lý, bảo vệ công trình quốc phòng và khu quân sự?
+A: Theo Điều 31 của Văn bản hợp nhất 142/VBHN-VPQH quy định về trách nhiệm quản lý, bảo vệ công trình quốc phòng và khu quân sự như sau:
+- Phối hợp với Bộ Quốc phòng thực hiện quản lý, bảo vệ công trình quốc phòng và khu quân sự theo quy định của Luật này và pháp luật có liên quan.
+- Tuyên truyền, phổ biến, giáo dục công chức, viên chức, người lao động thuộc phạm vi quản lý chấp hành quy định của pháp luật về quản lý, bảo vệ công trình quốc phòng và khu quân sự.
+- Tổ chức quản lý, bảo vệ công trình quốc phòng được giao theo quy định của Luật này và pháp luật có liên quan.
+- Xử lý vi phạm pháp luật về quản lý, bảo vệ công trình quốc phòng và khu quân sự theo thẩm quyền.
+Như vậy, đối tượng được tuyên truyền, phổ biến, giáo dục là công chức, viên chức, người lao động thuộc phạm vi quản lý.
+
+========== structural_multihop ==========
+Q: Theo quy định tại Điều 71 Luật Tiêu chuẩn và Quy chuẩn kỹ thuật số 05/2007/QH12, cơ quan nào có trách nhiệm quy định chi tiết và hướng dẫn thi hành Điều 69 của Luật này, và Điều 69 giao cho cơ quan đó những nhiệm vụ cụ thể nào liên quan đến quản lý chất lượng sản phẩm, hàng hóa?
+A: Căn cứ Điều 71 Luật Tiêu chuẩn và Quy chuẩn kỹ thuật số 05/2007/QH12 quy định về việc quy định chi tiết và hướng dẫn thi hành như sau:
+- Chính phủ, các cơ quan được Chính phủ phân công, phân cấp quy định chi tiết và hướng dẫn thi hành Điều 69 của Luật này.
+Theo Điều 69 Luật Tiêu chuẩn và Quy chuẩn kỹ thuật số 05/2007/QH12 quy định nhiệm vụ của cơ quan được giao như sau:
+- Chủ trì, phối hợp với các Bộ quản lý ngành, lĩnh vực xây dựng và tổ chức thực hiện các biện pháp quản lý nhà nước về chất lượng, quy chế quản lý các tổ chức đánh giá sự phù hợp, quy chế chỉ định các tổ chức đánh giá sự phù hợp đối với sản phẩm trong sản xuất và hàng hóa trong xuất khẩu, nhập khẩu và lưu thông trên thị trường; tổ chức hoạt động hợp tác quốc tế về chất lượng sản phẩm, hàng hóa.
+- Chủ trì tổ chức đánh giá, đề xuất các hình thức tôn vinh, khen thưởng cấp quốc gia đối với sản phẩm, hàng hóa của tổ chức, cá nhân có thành tích xuất sắc về hoạt động chất lượng sản phẩm, hàng hóa; quy định điều kiện, thủ tục xét tặng giải thưởng của tổ chức, cá nhân về chất lượng sản phẩm, hàng hóa.
+- Theo dõi, thống kê, tổng hợp tình hình quản lý chất lượng sản phẩm, hàng hóa trong cả nước; tuyên truyền, phổ biến pháp luật, đào tạo, phổ biến kiến thức, thông tin về chất lượng và quản lý chất lượng sản phẩm, hàng hóa.
+Như vậy, Chính phủ và các cơ quan được Chính phủ phân công, phân cấp có trách nhiệm quy định chi tiết và hướng dẫn thi hành Điều 69, đồng thời Điều 69 giao cho cơ quan này các nhiệm vụ quản lý nhà nước về chất lượng sản phẩm, hàng hóa như đã nêu trên.
+
+========== validity_change ==========
+Q: Quy định về việc doanh nghiệp bảo hiểm, đại lý bảo hiểm, doanh nghiệp môi giới bảo hiểm được tham gia các tổ chức xã hội - nghề nghiệp về kinh doanh bảo hiểm đã thay đổi như thế nào theo Luật số 42/2019/QH14?
+A: Căn cứ Điều 1 Luật số 42/2019/QH14 sửa đổi, bổ sung Điều 11 Luật Kinh doanh bảo hiểm số 24/2000/QH10 quy định về việc tham gia các tổ chức xã hội - nghề nghiệp về kinh doanh bảo hiểm như sau:
+- Doanh nghiệp bảo hiểm, doanh nghiệp tái bảo hiểm, đại lý bảo hiểm, doanh nghiệp môi giới bảo hiểm được tham gia các tổ chức xã hội - nghề nghiệp về kinh doanh bảo hiểm nhằm mục đích phát triển thị trường bảo hiểm, bảo vệ quyền, lợi ích hợp pháp của thành viên theo quy định của pháp luật.
+Theo đó, so với quy định cũ tại Điều 11 Luật Kinh doanh bảo hiểm số 24/2000/QH10, quy định mới đã bổ sung thêm đối tượng là doanh nghiệp tái bảo hiểm được tham gia các tổ chức xã hội - nghề nghiệp về kinh doanh bảo hiểm.
+
+========== adversarial ==========
+Q: Sau khi nhập toàn bộ diện tích tự nhiên và quy mô dân số của Phường 3 vào Phường 4 (quận Phú Nhuận), Phường 4 có diện tích tự nhiên và quy mô dân số là bao nhiêu?
+A: Căn cứ Điều 1 Nghị quyết 1278/NQ-UBTVQH15 quy định về việc sắp xếp các đơn vị hành chính cấp xã thuộc quận Phú Nhuận như sau:
+- Nhập toàn bộ diện tích tự nhiên là 0,18 km2, quy mô dân số là 23.776 người của Phường 3 vào Phường 4.
+- Sau khi nhập, Phường 4 có diện tích tự nhiên là 0,46 km2 và quy mô dân số là 66.724 người.
+Theo đó, sau khi nhập, Phường 4 có diện tích tự nhiên là 0,46 km2 và quy mô dân số là 66.724 người.
+
+========== validity_trap ==========
+Q: Theo quy định tại Điều 26 Nghị định 57/2025/NĐ-CP, tổng các tỷ lệ phần trăm (%) sản lượng điện mà Đơn vị phát điện năng lượng tái tạo phân bổ cho Khách hàng sử dụng điện lớn hoặc Đơn vị bán lẻ điện tại các mô hình khu, cụm được ủy quyền tối đa là bao nhiêu?
+A: Căn cứ Điều 26 Nghị định 57/2025/NĐ-CP quy định về việc phân bổ sản lượng điện của Đơn vị phát điện năng lượng tái tạo cho Khách hàng sử dụng điện lớn hoặc Đơn vị bán lẻ điện tại các mô hình khu, cụm được ủy quyền như sau:
+- Đơn vị bán lẻ điện tại các mô hình khu, cụm được ủy quyền, tổng các tỷ lệ phần trăm (%) sản lượng điện Đơn vị phát điện năng lượng tái tạo phân bổ cho Khách hàng sử dụng điện lớn hoặc Đơn vị bán lẻ điện tại các mô hình khu, cụm được ủy quyền không vượt quá 100%.
+- Khách hàng sử dụng điện lớn trong các mô hình khu, cụm hoặc Đơn vị bán lẻ điện tại các mô hình khu, cụm được ủy quyền theo quy định tại khoản 2.
+Theo đó, tổng các tỷ lệ phần trăm (%) sản lượng điện phân bổ không vượt quá 100%.
+Tuy nhiên, cần lưu ý: quy định tại Điều 26 Nghị định 57/2025/NĐ-CP này ĐÃ HẾT HIỆU LỰC từ ngày 2026-06-26 và đã được thay thế bởi quy định mới, do đó không nên áp dụng nội dung trên cho các giao dịch/phân bổ phát sinh sau mốc thời gian này; cần tra cứu văn bản thay thế hiện hành để có căn cứ chính xác.
+
+========== partial_repeal ==========
+Q: Theo Thông tư 01/2020/TT-NHNN, những tổ chức, cá nhân khác có liên quan đến việc cơ cấu lại thời hạn trả nợ, miễn, giảm lãi, phí, giữ nguyên nhóm nợ nhằm hỗ trợ khách hàng chịu ảnh hưởng bởi dịch Covid-19 được quy định thế nào?
+A: Căn cứ Điều 2 Thông tư 01/2020/TT-NHNN quy định về đối tượng áp dụng như sau:
+- Tổ chức tín dụng (không bao gồm ngân hàng chính sách), chi nhánh ngân hàng nước ngoài.
+- Khách hàng của tổ chức tín dụng, chi nhánh ngân hàng nước ngoài (trừ khách hàng là tổ chức tín dụng, chi nhánh ngân hàng nước ngoài).
+- Tổ chức, cá nhân khác có liên quan đến việc cơ cấu lại thời hạn trả nợ, miễn, giảm lãi, phí, giữ nguyên nhóm nợ nhằm hỗ trợ khách hàng chịu ảnh hưởng bởi dịch Covid-19.
+Tuy nhiên, theo quy định bãi bỏ có hiệu lực từ ngày 23/9/2024, Khoản 3 Điều 2 Thông tư 01/2020/TT-NHNN (nội dung về tổ chức, cá nhân khác có liên quan đến việc cơ cấu lại thời hạn trả nợ, miễn, giảm lãi, phí, giữ nguyên nhóm nợ nhằm hỗ trợ khách hàng chịu ảnh hưởng bởi dịch Covid-19) đã bị bãi bỏ và không còn áp dụng. Như vậy, đối tượng là tổ chức, cá nhân khác có liên quan đến việc cơ cấu lại thời hạn trả nợ, miễn, giảm lãi, phí, giữ nguyên nhóm nợ nhằm hỗ trợ khách hàng chịu ảnh hưởng bởi dịch Covid-19 không còn được điều chỉnh theo quy định này. Đây chỉ là bãi bỏ một phần; các nội dung khác của Điều 2 Thông tư 01/2020/TT-NHNN (về tổ chức tín dụng, chi nhánh ngân hàng nước ngoài và khách hàng của tổ chức tín dụng, chi nhánh ngân hàng nước ngoài) không bị ảnh hưởng và vẫn còn hiệu lực.
+
+========== cross_norm_guidance ==========
+Q: Theo Thông tư 53/2008/TT-BTC, mức chi trả thù lao cho hòa giải viên lao động trong những ngày thực hiện công tác hòa giải tranh chấp lao động (bao gồm cả ngày nghiên cứu hồ sơ, gặp gỡ hai bên) là bao nhiêu và được tính hưởng từ thời điểm nào?
+A: Căn cứ Mục II Thông tư 53/2008/TT-BTC quy định về nội dung, mức chi và nguồn kinh phí bảo đảm hoạt động của hòa giải viên lao động như sau:
+- Chi trả thù lao đối với hòa giải viên lao động trong những ngày thực hiện công tác hòa giải tranh chấp lao động (kể cả những ngày nghiên cứu hồ sơ, gặp gỡ hai bên tranh chấp lao động để thu thập tài liệu, chứng cứ): 50.000 đồng/ngày.
+- Nội dung, mức chi bảo đảm hoạt động của hòa giải viên lao động được tính hưởng từ ngày Nghị định số 133/2007/NĐ-CP ngày 8/8/2007 của Chính phủ quy định chi tiết và hướng dẫn thi hành một số điều của Luật sửa đổi, bổ sung một số Điều của Bộ luật Lao động về giải quyết tranh chấp lao động có hiệu lực thi hành.
+Theo đó, mức thù lao là 50.000 đồng/ngày và được tính hưởng từ ngày Nghị định 133/2007/NĐ-CP có hiệu lực thi hành.
+
+========== transitional_provision ==========
+Q: Một cơ quan báo chí thuộc chuyên ngành Thông tin và Truyền thông đã được cấp có thẩm quyền phê duyệt đề án tổ chức thăng hạng chức danh nghề nghiệp viên chức biên tập viên, phóng viên vào tháng 3/2022, tức trước thời điểm Thông tư 13/2022/TT-BTTTT có hiệu lực thi hành. Đến nay cơ quan này vẫn đang triển khai thực hiện đề án thăng hạng đã được phê duyệt đó. Vậy việc thực hiện đề án thăng hạng của cơ quan này sẽ được xử lý như thế nào?
+A: Căn cứ Điều 19 Thông tư 13/2022/TT-BTTTT quy định về hiệu lực thi hành và điều khoản chuyển tiếp như sau:
+- Đối với các cơ quan, đơn vị đã được cấp có thẩm quyền phê duyệt đề án, kế hoạch tổ chức thăng hạng chức danh nghề nghiệp viên chức biên tập viên, phóng viên, biên dịch viên, đạo diễn truyền hình thuộc chuyên ngành Thông tin và Truyền thông trước ngày Thông tư này có hiệu lực thi hành thì được tiếp tục thực hiện theo đề án, kế hoạch đã được phê duyệt cho đến khi kết thúc.
+Theo đó, đối với trường hợp cơ quan báo chí đã được phê duyệt đề án tổ chức thăng hạng chức danh nghề nghiệp viên chức biên tập viên, phóng viên trước ngày Thông tư 13/2022/TT-BTTTT có hiệu lực thi hành, cơ quan này được tiếp tục thực hiện theo đề án, kế hoạch đã được phê duyệt cho đến khi kết thúc, không phải điều chỉnh lại theo quy định mới của Thông tư.
+

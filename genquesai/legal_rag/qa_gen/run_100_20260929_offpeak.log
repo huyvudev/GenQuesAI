@@ -1,0 +1,26 @@
+  Model kiểm tra chéo (Bước 3): gemini/gemini-2.5-flash
+== Bước 0: hợp nhất dữ liệu ==
+  Đang quét Qdrant lấy dự phòng nội dung (1 lần, ~vài phút)...
+  Qdrant fallback: 376,105 comp_id có nội dung (71s)
+  374,559 Điều (245,058 lấy từ Qdrant) · 5,547 quan hệ hiệu lực đã duyệt (cấp Điều/Khoản/Điểm) · 6,598 tham chiếu nội bộ · 238 bãi bỏ từng phần · 21,872 cặp VB hướng dẫn (GUIDED_BY) · 440 điều khoản chuyển tiếp (113s)
+== Bước 0b: khớp bộ kịch bản liên ngành CỐ ĐỊNH vào corpus (không gọi LLM) ==
+  156 kịch bản khớp domain vào corpus (121s)
+== Chuẩn bị Qdrant/embedder cho loại lien_nganh (tuỳ chọn) ==
+  Môi trường thiếu torch/FlagEmbedding -> BỎ QUA loại lien_nganh (chạy bằng venv Chatbot-Law nếu cần loại này)
+== Bước 1: lập kế hoạch ==
+  con_hieu_luc=62.10% co_qhhl=1.40% mat_do_cross_ref=0.018 mat_do_guided_by=0.058
+  tỉ lệ: một_bước=26.6% cấu_trúc=10.9% hiệu_lực=12.8% gài_bẫy=15.0% bẫy_hiệu_lực=15.0% bãi_bỏ_từng_phần=5.0% hướng_dẫn_liên_vb=6.8% chuyển_tiếp=5.0% liên_ngành=3.0%
+  ngân sách sinh: {'mot_buoc': 27, 'cau_truc': 11, 'hieu_luc': 13, 'gai_bay': 15, 'bay_hieu_luc': 15, 'bai_bo_tung_phan': 5, 'huong_dan_lien_vb': 7, 'chuyen_tiep': 5, 'lien_nganh': 3}
+== Bước 2: sinh đề ==
+  {'mot_buoc_ok': 27, 'cau_truc_ok': 26, 'hieu_luc_ok': 13, 'gai_bay_ok': 15, 'bay_hieu_luc_ok': 15, 'bai_bo_tung_phan_ok': 5, 'huong_dan_lien_vb_ok': 7, 'chuyen_tiep_ok': 5} -> tổng 113 câu (226s)
+== Bước 3: chấm đề (model kiểm tra độc lập với model sinh) ==
+  vòng 1 (omission): {'omission_checked': 46, 'omission_drop': 20} · vòng 2 (hiệu lực): {'validity_drop': 6} · bẫy hiệu lực: {'bay_checked': 20, 'bay_drop': 0}
+  quality gate: {'gate_checked': 72, 'gate_drop': 7} -> còn 80 câu
+== Bước 4: cân bằng tỉ lệ ==
+  lịch sử TVD: [{'iter': 0, 'tvd': 0.13440691586639225, 'single_hop': 0.3375, 'structural_multihop': 0.05, 'validity_change': 0.1, 'adversarial': 0.1875, 'validity_trap': 0.175, 'partial_repeal': 0.0375, 'cross_norm_guidance': 0.0625, 'transitional_provision': 0.05}, {'iter': 1, 'tvd': 0.035662531301759365, 'single_hop': 0.27835051546391754, 'structural_multihop': 0.1134020618556701, 'validity_change': 0.13402061855670103, 'adversarial': 0.15463917525773196, 'validity_trap': 0.15463917525773196, 'partial_repeal': 0.05154639175257732, 'cross_norm_guidance': 0.061855670103092786, 'transitional_provision': 0.05154639175257732}]
+
+=== XONG: 97 câu hỏi (299s) ===
+Phân phối thực tế: {'single_hop': 0.278, 'structural_multihop': 0.113, 'validity_change': 0.134, 'adversarial': 0.155, 'validity_trap': 0.155, 'partial_repeal': 0.052, 'cross_norm_guidance': 0.062, 'transitional_provision': 0.052}
+== Bước 5: sinh biến thể ngôn ngữ (mô phỏng người dùng không chuyên) ==
+  {'cau_can_bien_the': 97, 'bien_the_sinh': 170, 'bien_the_loai': 24} (357s)
+Đã ghi: D:\Project\GenQuesAI\genquesai\legal_rag\qa_gen\_out_qa.jsonl
